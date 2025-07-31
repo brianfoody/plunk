@@ -6,7 +6,7 @@ import dayjs from "dayjs";
 import { AnimatePresence, motion } from "framer-motion";
 import { Search, Users2, XIcon } from "lucide-react";
 import { useRouter } from "next/router";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import { type FieldError, useForm } from "react-hook-form";
 import { toast } from "sonner";
 import { Alert, Card, Dropdown, Editor, FullscreenLoader, Input, MultiselectDropdown } from "../../components";
@@ -15,6 +15,7 @@ import { useCampaigns } from "../../lib/hooks/campaigns";
 import { useContacts, usePaginatedContacts, useContactsCount } from "../../lib/hooks/contacts";
 import { useEventsWithoutTriggers } from "../../lib/hooks/events";
 import { useActiveProject } from "../../lib/hooks/projects";
+import { useDebounce } from "../../lib/hooks/useDebounce";
 import { network } from "../../lib/network";
 
 interface CampaignValues {
@@ -50,10 +51,18 @@ export default function Index() {
 	const [selectedContactIds, setSelectedContactIds] = useState<string[]>([]);
 	const [isSelectingAll, setIsSelectingAll] = useState(false);
 	
-	const { data: paginatedContacts } = usePaginatedContacts(
+	// Debounce search input
+	const debouncedSearch = useDebounce(contactSearch, 300);
+	
+	// Reset page when search changes
+	useEffect(() => {
+		setContactPage(1);
+	}, [debouncedSearch]);
+	
+	const { data: paginatedContacts, isLoading, error } = usePaginatedContacts(
 		contactPage,
 		50,
-		contactSearch,
+		debouncedSearch, // Use debounced search instead of contactSearch
 		true // Only subscribed contacts
 	);
 
@@ -84,6 +93,13 @@ export default function Index() {
 		},
 	});
 
+	// Update recipients when selection changes
+	useEffect(() => {
+		if (!isSelectingAll) {
+			setValue("recipients", selectedContactIds);
+		}
+	}, [selectedContactIds, isSelectingAll, setValue]);
+
 	useEffect(() => {
 		watch((value, { name, type }) => {
 			if (name === "email") {
@@ -113,9 +129,15 @@ export default function Index() {
 	};
 
 	const selectAllContacts = () => {
-		setIsSelectingAll(true);
-		setSelectedContactIds([]);
-		setValue("recipients", ["all"]);
+		if (isSelectingAll) {
+			setIsSelectingAll(false);
+			setSelectedContactIds([]);
+			setValue("recipients", []);
+		} else {
+			setIsSelectingAll(true);
+			setSelectedContactIds([]);
+			setValue("recipients", ["all"]);
+		}
 	};
 
 	const clearSelectedContacts = () => {
@@ -128,18 +150,24 @@ export default function Index() {
 		if (!paginatedContacts) return;
 		
 		const pageContactIds = paginatedContacts.contacts.map(c => c.id);
-		const newSelection = [...new Set([...selectedContactIds, ...pageContactIds])];
-		setSelectedContactIds(newSelection);
-		setIsSelectingAll(false);
-		setValue("recipients", newSelection);
-	};
-
-	// Update recipients when selection changes
-	useEffect(() => {
-		if (!isSelectingAll) {
-			setValue("recipients", selectedContactIds);
+		
+		// Check if all current page contacts are already selected
+		const allPageSelected = pageContactIds.every(id => selectedContactIds.includes(id));
+		
+		if (allPageSelected) {
+			// If all page contacts are selected, deselect them
+			const newSelection = selectedContactIds.filter(id => !pageContactIds.includes(id));
+			setSelectedContactIds(newSelection);
+			setIsSelectingAll(false);
+			setValue("recipients", newSelection);
+		} else {
+			// Select all current page contacts
+			const newSelection = [...new Set([...selectedContactIds, ...pageContactIds])];
+			setSelectedContactIds(newSelection);
+			setIsSelectingAll(false);
+			setValue("recipients", newSelection);
 		}
-	}, [selectedContactIds, isSelectingAll, setValue]);
+	};
 
 	const selectQuery = () => {
 		// This function now handles advanced filtering
@@ -251,36 +279,73 @@ export default function Index() {
 									</div>
 
 									{/* Search */}
-									<div className="mb-4">
+									<div className="mb-4 relative">
 										<input
 											type="text"
 											placeholder="Search contacts..."
 											value={contactSearch}
 											onChange={(e) => setContactSearch(e.target.value)}
-											className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm"
+											className={`w-full px-3 py-2 border border-gray-300 rounded-md text-sm pr-8 ${
+												contactSearch !== debouncedSearch ? 'border-blue-300 bg-blue-50' : ''
+											}`}
 										/>
+										{contactSearch !== debouncedSearch && (
+											<div className="absolute right-3 top-1/2 transform -translate-y-1/2">
+												<Ring size={16} />
+											</div>
+										)}
 									</div>
 
 									{/* Contact List */}
-									{paginatedContacts && (
-										<div className="border rounded-md max-h-60 overflow-y-auto">
-											{paginatedContacts.contacts.map((contact) => (
-												<div key={contact.id} className="flex items-center p-2 border-b last:border-b-0 hover:bg-gray-50">
-													<input
-														type="checkbox"
-														checked={isSelectingAll || selectedContactIds.includes(contact.id)}
-														onChange={() => !isSelectingAll && toggleContactSelection(contact.id)}
-														disabled={isSelectingAll}
-														className="mr-3"
-													/>
-													<div className="flex-1">
-														<div className="text-sm font-medium">{contact.email}</div>
-														<div className="text-xs text-gray-500">
-															Added {dayjs(contact.createdAt).format('MMM D, YYYY')}
+									{isLoading ? (
+										<div className="border rounded-md p-4 text-center">
+											<div className="mx-auto mb-2">
+												<Ring size={20} />
+											</div>
+											<div className="text-sm text-gray-500">
+												{contactSearch !== debouncedSearch ? "Searching..." : "Loading contacts..."}
+											</div>
+										</div>
+									) : error ? (
+										<div className="border rounded-md p-4 text-center text-red-500">
+											<div className="text-sm">Error loading contacts. Please try again.</div>
+										</div>
+									) : paginatedContacts ? (
+										paginatedContacts.contacts.length > 0 ? (
+											<div className="border rounded-md max-h-60 overflow-y-auto">
+												{paginatedContacts.contacts.map((contact) => (
+													<div 
+														key={contact.id} 
+														className="flex items-center p-2 border-b last:border-b-0 hover:bg-gray-50 cursor-pointer"
+														onClick={() => !isSelectingAll && toggleContactSelection(contact.id)}
+													>
+														<input
+															type="checkbox"
+															checked={isSelectingAll || selectedContactIds.includes(contact.id)}
+															onChange={(e) => {
+																e.stopPropagation(); // Prevent row click when clicking checkbox
+																!isSelectingAll && toggleContactSelection(contact.id);
+															}}
+															disabled={isSelectingAll}
+															className="mr-3"
+														/>
+														<div className="flex-1">
+															<div className="text-sm font-medium">{contact.email}</div>
+															<div className="text-xs text-gray-500">
+																Added {dayjs(contact.createdAt).format('MMM D, YYYY')}
+															</div>
 														</div>
 													</div>
-												</div>
-											))}
+												))}
+											</div>
+										) : (
+											<div className="border rounded-md p-4 text-center text-gray-500">
+												{debouncedSearch ? `No contacts found matching "${debouncedSearch}"` : "No contacts found"}
+											</div>
+										)
+									) : (
+										<div className="border rounded-md p-4 text-center text-gray-500">
+											<div className="text-sm">No contacts available</div>
 										</div>
 									)}
 
@@ -508,9 +573,9 @@ export default function Index() {
 													values={[
 														{ name: "Any parameter", value: "" },
 														...new Set(
-															contacts.contacts
-																.filter((c) => c.data)
-																.map((c) => {
+															(paginatedContacts?.contacts || [])
+																.filter((c: any) => c.data)
+																.map((c: any) => {
 																	return Object.keys(JSON.parse(c.data ?? "{}"));
 																})
 																.reduce((acc, val) => acc.concat(val), []),
@@ -537,7 +602,7 @@ export default function Index() {
 															values={[
 																{ name: "Any value", value: "" },
 																...new Set(
-																	contacts.contacts
+																	(paginatedContacts?.contacts || [])
 																		.filter((c) => c.data && JSON.parse(c.data)[query.data ?? ""])
 																		.map((c) => {
 																			return JSON.parse(c.data ?? "{}")[query.data ?? ""];
