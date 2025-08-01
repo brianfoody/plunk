@@ -283,7 +283,8 @@ model Task {
   id String @id @default(uuid())
 
   // Details
-  runBy DateTime @default(now())
+  runBy  DateTime   @default(now())
+  status TaskStatus @default(PENDING)
 
   // Relations
   action   Action? @relation(fields: [actionId], references: [id], onDelete: Cascade)
@@ -331,4 +332,11 @@ enum Role {
   OWNER
   ADMIN
   MEMBER
+}
+
+enum TaskStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
 }
