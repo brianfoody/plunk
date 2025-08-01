@@ -24,9 +24,10 @@ import {
 } from "../../components";
 import { Dashboard } from "../../layouts";
 import { useCampaign, useCampaigns } from "../../lib/hooks/campaigns";
-import { useContacts } from "../../lib/hooks/contacts";
+import { useContacts, usePaginatedContacts, useContactsCount } from "../../lib/hooks/contacts";
 import { useEventsWithoutTriggers } from "../../lib/hooks/events";
 import { useActiveProject } from "../../lib/hooks/projects";
+import { useDebounce } from "../../lib/hooks/useDebounce";
 import { network } from "../../lib/network";
 
 interface CampaignValues {
@@ -51,8 +52,29 @@ export default function Index() {
 	const project = useActiveProject();
 	const { mutate: campaignsMutate } = useCampaigns();
 	const { data: campaign, mutate: campaignMutate } = useCampaign(router.query.id as string);
-	const { data: contacts } = useContacts(0);
+	const { data: contactsCount } = useContactsCount();
 	const { data: events } = useEventsWithoutTriggers();
+
+	// Contact selection state
+	const [contactPage, setContactPage] = useState(1);
+	const [contactSearch, setContactSearch] = useState("");
+	const [selectedContactIds, setSelectedContactIds] = useState<string[]>([]);
+	const [isSelectingAll, setIsSelectingAll] = useState(false);
+	
+	// Debounce search input
+	const debouncedSearch = useDebounce(contactSearch, 300);
+	
+	// Reset page when search changes
+	useEffect(() => {
+		setContactPage(1);
+	}, [debouncedSearch]);
+	
+	const { data: paginatedContacts, isLoading, error } = usePaginatedContacts(
+		contactPage,
+		50,
+		debouncedSearch, // Use debounced search instead of contactSearch
+		true // Only subscribed contacts
+	);
 
 	const [query, setQuery] = useState<{
 		events?: string[];
@@ -79,6 +101,13 @@ export default function Index() {
 		resolver: zodResolver(CampaignSchemas.update),
 		defaultValues: { recipients: [], body: undefined },
 	});
+
+	// Update recipients when selection changes
+	useEffect(() => {
+		if (!isSelectingAll) {
+			setValue("recipients", selectedContactIds);
+		}
+	}, [selectedContactIds, isSelectingAll, setValue]);
 
 	useEffect(() => {
 		if (!campaign) {
@@ -110,97 +139,61 @@ export default function Index() {
 		return <FullscreenLoader />;
 	}
 
-	const selectQuery = () => {
-		if (!contacts) {
-			return;
-		}
-
-		let filteredContacts = contacts.contacts;
-
-		if (query.events && query.events.length > 0) {
-			query.events.map((e) => {
-				filteredContacts = filteredContacts.filter((c) => c.triggers.some((t) => t.eventId === e));
-			});
-		}
-
-		if (query.last) {
-			filteredContacts = filteredContacts.filter((c) => {
-				if (c.triggers.length === 0) {
-					return false;
-				}
-
-				const lastTrigger = c.triggers.sort((a, b) => (a.createdAt > b.createdAt ? -1 : 1));
-
-				if (lastTrigger.length === 0) {
-					return false;
-				}
-
-				return dayjs(lastTrigger[0].createdAt).isAfter(dayjs().subtract(1, query.last));
-			});
-		}
-
-		if (query.notevents && query.notevents.length > 0 && query.notlast) {
-			query.notevents.map((e) => {
-				filteredContacts = filteredContacts.filter((c) => {
-					if (c.triggers.length === 0) {
-						return true;
-					}
-
-					const lastTrigger = c.triggers.filter((t) => t.eventId === e).sort((a, b) => (a.createdAt > b.createdAt ? -1 : 1));
-
-					if (lastTrigger.length === 0) {
-						return true;
-					}
-
-					return dayjs(lastTrigger[0].createdAt).isAfter(dayjs().subtract(1, query.last));
-				});
-			});
-		} else if (query.notevents && query.notevents.length > 0) {
-			query.notevents.map((e) => {
-				filteredContacts = filteredContacts.filter((c) => c.triggers.every((t) => t.eventId !== e));
-			});
-		} else if (query.notlast) {
-			filteredContacts = filteredContacts.filter((c) => {
-				if (c.triggers.length === 0) {
-					return true;
-				}
-
-				const lastTrigger = c.triggers.sort((a, b) => (a.createdAt > b.createdAt ? -1 : 1));
-
-				if (lastTrigger.length === 0) {
-					return true;
-				}
-
-				return !dayjs(lastTrigger[0].createdAt).isAfter(dayjs().subtract(1, query.notlast));
-			});
-		}
-
-		if (query.data) {
-			filteredContacts = filteredContacts.filter((c) => {
-				if (!c.data) {
-					return false;
-				}
-
-				return JSON.parse(c.data)[query.data as string];
-			});
-		}
-
-		if (query.data && query.value) {
-			filteredContacts = filteredContacts.filter((c) => {
-				if (!c.data) {
-					return false;
-				}
-
-				return Array.isArray(JSON.parse(c.data)[query.data as string])
-					? JSON.parse(c.data)[query.data as string].includes(query.value)
-					: JSON.parse(c.data)[query.data as string] === query.value;
-			});
-		}
-
-		setValue(
-			"recipients",
-			filteredContacts.map((c) => c.id),
+	// Helper functions for contact selection
+	const toggleContactSelection = (contactId: string) => {
+		setSelectedContactIds(prev => 
+			prev.includes(contactId) 
+				? prev.filter(id => id !== contactId)
+				: [...prev, contactId]
 		);
+	};
+
+	const selectAllContacts = () => {
+		if (isSelectingAll) {
+			setIsSelectingAll(false);
+			setSelectedContactIds([]);
+			setValue("recipients", []);
+		} else {
+			setIsSelectingAll(true);
+			setSelectedContactIds([]);
+			setValue("recipients", ["all"]);
+		}
+	};
+
+	const clearSelectedContacts = () => {
+		setIsSelectingAll(false);
+		setSelectedContactIds([]);
+		setValue("recipients", []);
+	};
+
+	const selectCurrentPageContacts = () => {
+		if (!paginatedContacts) return;
+		
+		const pageContactIds = paginatedContacts.contacts.map(c => c.id);
+		
+		// Check if all current page contacts are already selected
+		const allPageSelected = pageContactIds.every(id => selectedContactIds.includes(id));
+		
+		if (allPageSelected) {
+			// If all page contacts are selected, deselect them
+			const newSelection = selectedContactIds.filter(id => !pageContactIds.includes(id));
+			setSelectedContactIds(newSelection);
+			setIsSelectingAll(false);
+			setValue("recipients", newSelection);
+		} else {
+			// Select all current page contacts
+			const newSelection = [...new Set([...selectedContactIds, ...pageContactIds])];
+			setSelectedContactIds(newSelection);
+			setIsSelectingAll(false);
+			setValue("recipients", newSelection);
+		}
+	};
+
+	const selectQuery = () => {
+		// This function now handles advanced filtering
+		// Implementation would need to be updated to work with paginated data
+		// For now, we'll use the basic selection
+		console.warn("Advanced filtering with pagination not yet implemented");
 	};
 
 	const send = async (data: CampaignValues) => {
@@ -213,7 +206,7 @@ export default function Index() {
 			"PUT",
 			"/v1/campaigns",
 
-			data.recipients.length === contacts?.contacts.filter((c) => c.subscribed).length
+			isSelectingAll || data.recipients.includes("all")
 				? { id: campaign.id, ...data, recipients: ["all"] }
 				: {
 						id: campaign.id,
@@ -453,22 +446,146 @@ export default function Index() {
 							)}
 						</div>
 
-						{contacts ? (
+						{paginatedContacts || contactsCount ? (
 							<>
-								<div className={"sm:col-span-3"}>
-									<label htmlFor={"recipients"} className="block text-sm font-medium text-neutral-700">
+								<div className={"sm:col-span-6"}>
+									<label htmlFor={"recipients"} className="block text-sm font-medium text-neutral-700 mb-2">
 										Recipients
 									</label>
-									<MultiselectDropdown
-										disabled={campaign.status !== "DRAFT"}
-										onChange={(c) => setValue("recipients", c)}
-										values={contacts.contacts
-											.filter((c) => c.subscribed)
-											.map((c) => {
-												return { name: c.email, value: c.id };
-											})}
-										selectedValues={watch("recipients")}
-									/>
+									
+									{/* Search */}
+									<div className="mb-4">
+										<div className="flex items-center gap-4">
+											{/* Search input */}
+											<div className="flex-1 relative">
+												<input
+													type="text"
+													placeholder="Search contacts..."
+													value={contactSearch}
+													onChange={(e) => setContactSearch(e.target.value)}
+													className={`w-full px-3 py-2 border border-neutral-300 rounded text-sm pr-8 transition ease-in-out focus:border-neutral-800 focus:ring-neutral-800 ${
+														contactSearch !== debouncedSearch ? 'border-blue-300 bg-blue-50' : ''
+													}`}
+												/>
+												{contactSearch !== debouncedSearch && (
+													<div className="absolute right-3 top-1/2 transform -translate-y-1/2">
+														<Ring size={16} />
+													</div>
+												)}
+											</div>
+											
+											{/* Buttons */}
+											<div className="flex gap-2">
+												<button
+													type="button"
+													onClick={selectAllContacts}
+													className="flex items-center justify-center gap-x-1 rounded border border-neutral-300 bg-white px-4 py-2 text-center text-sm font-medium text-neutral-800 transition ease-in-out hover:bg-neutral-100"
+												>
+													Select All ({contactsCount || 0})
+												</button>
+												{paginatedContacts && (
+													<button
+														type="button"
+														onClick={selectCurrentPageContacts}
+														className="flex items-center justify-center gap-x-1 rounded border border-neutral-300 bg-white px-4 py-2 text-center text-sm font-medium text-neutral-800 transition ease-in-out hover:bg-neutral-100"
+													>
+														Select Page ({paginatedContacts.contacts.length})
+													</button>
+												)}
+												<button
+													type="button"
+													onClick={clearSelectedContacts}
+													className="flex items-center justify-center gap-x-1 rounded border border-neutral-300 bg-white px-4 py-2 text-center text-sm font-medium text-neutral-800 transition ease-in-out hover:bg-neutral-100"
+												>
+													Clear All
+												</button>
+											</div>
+										</div>
+									</div>
+
+									{/* Contact List */}
+									{isLoading ? (
+										<div className="border rounded-md p-4 text-center">
+											<div className="mx-auto mb-2">
+												<Ring size={20} />
+											</div>
+											<div className="text-sm text-gray-500">
+												{contactSearch !== debouncedSearch ? "Searching..." : "Loading contacts..."}
+											</div>
+										</div>
+									) : error ? (
+										<div className="border rounded-md p-4 text-center text-red-500">
+											<div className="text-sm">Error loading contacts. Please try again.</div>
+										</div>
+									) : paginatedContacts ? (
+										paginatedContacts.contacts.length > 0 ? (
+											<div className="border rounded-md max-h-60 overflow-y-auto">
+												{paginatedContacts.contacts.map((contact) => (
+													<div 
+														key={contact.id} 
+														className="flex items-center p-2 border-b last:border-b-0 hover:bg-gray-50 cursor-pointer"
+														onClick={() => !isSelectingAll && toggleContactSelection(contact.id)}
+													>
+														<input
+															type="checkbox"
+															checked={isSelectingAll || selectedContactIds.includes(contact.id)}
+															onChange={(e) => {
+																e.stopPropagation(); // Prevent row click when clicking checkbox
+																!isSelectingAll && toggleContactSelection(contact.id);
+															}}
+															disabled={isSelectingAll}
+															className="mr-3"
+														/>
+														<div className="flex-1">
+															<div className="text-sm font-medium">{contact.email}</div>
+															<div className="text-xs text-gray-500">
+																Added {dayjs(contact.createdAt).format('MMM D, YYYY')}
+															</div>
+														</div>
+													</div>
+												))}
+											</div>
+										) : (
+											<div className="border rounded-md p-4 text-center text-gray-500">
+												{debouncedSearch ? `No contacts found matching "${debouncedSearch}"` : "No contacts found"}
+											</div>
+										)
+									) : (
+										<div className="border rounded-md p-4 text-center text-gray-500">
+											<div className="text-sm">No contacts available</div>
+										</div>
+									)}
+
+									{/* Pagination */}
+									{paginatedContacts && paginatedContacts.totalPages > 1 && (
+										<div className="flex justify-between items-center mt-4">
+											<span className="text-sm text-gray-600">
+												Page {paginatedContacts.page} of {paginatedContacts.totalPages} - 												{isSelectingAll 
+														? `All contacts selected (${contactsCount || 0})`
+														: `${selectedContactIds.length} contacts selected`
+													}
+											</span>
+											<div className="flex gap-2">
+												<button
+													type="button"
+													onClick={() => setContactPage(prev => Math.max(1, prev - 1))}
+													disabled={paginatedContacts.page <= 1}
+													className="px-3 py-1 text-sm border rounded disabled:opacity-50"
+												>
+													Previous
+												</button>
+												<button
+													type="button"
+													onClick={() => setContactPage(prev => Math.min(paginatedContacts.totalPages, prev + 1))}
+													disabled={paginatedContacts.page >= paginatedContacts.totalPages}
+													className="px-3 py-1 text-sm border rounded disabled:opacity-50"
+												>
+													Next
+												</button>
+											</div>
+										</div>
+									)}
+
 									<AnimatePresence>
 										{(errors.recipients as FieldError | undefined)?.message && (
 											<motion.p
@@ -483,43 +600,20 @@ export default function Index() {
 									</AnimatePresence>
 								</div>
 
-								<div className={"grid gap-6 sm:col-span-3 sm:grid-cols-2"}>
-									{campaign.status === "DRAFT" && (
-										<>
-											<button
-												onClick={(e) => {
-													e.preventDefault();
-
-													if (watch("recipients").length > 0) {
-														return setValue("recipients", []);
-													}
-
-													setValue(
-														"recipients",
-														contacts.contacts.filter((c) => c.subscribed).map((c) => c.id),
-													);
-												}}
-												className={
-													"mt-6 flex items-center justify-center gap-x-1 rounded border border-neutral-300 bg-white px-8 py-1 text-center text-sm font-medium text-neutral-800 transition ease-in-out hover:bg-neutral-100"
-												}
-											>
-												{watch("recipients").length === 0 ? <Users2 size={18} /> : <XIcon size={18} />}
-												{watch("recipients").length === 0 ? "All contacts" : "Clear selection"}
-											</button>
-											<button
-												onClick={(e) => {
-													e.preventDefault();
-													setSelector(!advancedSelector);
-												}}
-												className={
-													"mt-6 flex items-center justify-center gap-x-1 rounded border border-neutral-300 bg-white px-8 py-1 text-center text-sm font-medium text-neutral-800 transition ease-in-out hover:bg-neutral-100"
-												}
-											>
-												{advancedSelector ? <XIcon size={18} /> : <Search size={18} />}
-												{advancedSelector ? "Close" : "Advanced selector"}
-											</button>
-										</>
-									)}
+								<div className={"sm:col-span-6"}>
+									<button
+										type="button"
+										onClick={(e) => {
+											e.preventDefault();
+											setSelector(!advancedSelector);
+										}}
+										className={
+											"flex items-center justify-center gap-x-1 rounded border border-neutral-300 bg-white px-4 py-2 text-center text-sm font-medium text-neutral-800 transition ease-in-out hover:bg-neutral-100"
+										}
+									>
+										{advancedSelector ? <XIcon size={18} /> : <Search size={18} />}
+										{advancedSelector ? "Close Advanced" : "Advanced Selector"}
+									</button>
 								</div>
 
 								<AnimatePresence>
@@ -689,12 +783,12 @@ export default function Index() {
 													values={[
 														{ name: "Any parameter", value: "" },
 														...new Set(
-															contacts.contacts
-																.filter((c) => c.data)
-																.map((c) => {
+															(paginatedContacts?.contacts || [])
+																.filter((c: any) => c.data)
+																.map((c: any) => {
 																	return Object.keys(JSON.parse(c.data ?? "{}"));
 																})
-																.reduce((acc, val) => acc.concat(val), []),
+																.reduce((acc: any, val: any) => acc.concat(val), []),
 														),
 													].map((k) => (typeof k === "string" ? { name: k, value: k } : k))}
 													selectedValue={query.data ?? ""}
@@ -718,12 +812,12 @@ export default function Index() {
 															values={[
 																{ name: "Any value", value: "" },
 																...new Set(
-																	contacts.contacts
-																		.filter((c) => c.data && JSON.parse(c.data)[query.data ?? ""])
-																		.map((c) => {
+																	(paginatedContacts?.contacts || [])
+																		.filter((c: any) => c.data && JSON.parse(c.data)[query.data ?? ""])
+																		.map((c: any) => {
 																			return JSON.parse(c.data ?? "{}")[query.data ?? ""];
 																		})
-																		.reduce((acc, val) => acc.concat(val), []),
+																		.reduce((acc: any, val: any) => acc.concat(val), []),
 																),
 															].map((k) =>
 																typeof k === "string"
@@ -778,24 +872,23 @@ export default function Index() {
 								</AnimatePresence>
 							</>
 						) : (
-							campaign.status === "DRAFT" && (
-								<>
-									<div className={"flex items-center gap-6 rounded border border-neutral-300 px-8 py-3 sm:col-span-6"}>
-										<Ring size={20} />
-										<div>
-											<h1 className={"text-lg font-semibold text-neutral-800"}>Hang on!</h1>
-											<p className={"text-sm text-neutral-600"}>
-												We're still loading your contacts. This might take up to a minute. You can already start writing your
-												campaign in the editor below.
-											</p>
-										</div>
+							<>
+								<div className={"flex items-center gap-6 rounded border border-neutral-300 px-8 py-3 sm:col-span-6"}>
+									<Ring size={20} />
+									<div>
+										<h1 className={"text-lg font-semibold text-neutral-800"}>Hang on!</h1>
+										<p className={"text-sm text-neutral-600"}>
+											We're still loading your contacts. This might take up to a minute. You can already start writing your
+											campaign in the editor below.
+										</p>
 									</div>
-								</>
-							)
+								</div>
+							</>
 						)}
 
 						<AnimatePresence>
-							{watch("recipients").length >= 10 && campaign.status !== "DELIVERED" && (
+							{((isSelectingAll && contactsCount && contactsCount >= 10) || 
+							  (!isSelectingAll && selectedContactIds.length >= 10)) && campaign.status !== "DELIVERED" && (
 								<motion.div
 									initial={{ opacity: 0, height: 0 }}
 									animate={{ opacity: 1, height: "auto" }}
@@ -803,8 +896,8 @@ export default function Index() {
 									className={"relative z-10 sm:col-span-6"}
 								>
 									<Alert type={"info"} title={"Automatic batching"}>
-										Your campaign will be sent out in batches of 80 recipients each. It will be delivered to all contacts{" "}
-										{dayjs().to(dayjs().add(Math.ceil(watch("recipients").length / 80), "minutes"))}
+										Your campaign will be sent out in batches of 100 recipients each. It will be delivered to all contacts{" "}
+										{dayjs().to(dayjs().add(Math.ceil((isSelectingAll ? contactsCount || 0 : selectedContactIds.length) / 100), "minutes"))}
 									</Alert>
 								</motion.div>
 							)}

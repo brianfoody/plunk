@@ -203,7 +203,7 @@ export default function Index() {
 		<>
 			<Dashboard>
 				<Card title={"Create a new campaign"}>
-					<form onSubmit={handleSubmit(create)} className="space-y-6 sm:grid sm:grid-cols-6 sm:gap-6">
+					<form onSubmit={handleSubmit(create)} className="space-y-6 sm:space-y-0 sm:space-6 sm:grid sm:gap-6 sm:grid-cols-6">
 						<div className={"sm:col-span-6 sm:grid sm:grid-cols-6 sm:gap-6 space-y-6 sm:space-y-0"}>
 							<Input
 								className={"sm:col-span-6"}
@@ -241,20 +241,33 @@ export default function Index() {
 										Recipients
 									</label>
 									
-									{/* Selection Summary */}
-									<div className="bg-gray-50 p-3 rounded mb-4">
-										<div className="flex justify-between items-center mb-2">
-											<span className="text-sm text-gray-700">
-												{isSelectingAll 
-													? `All contacts selected (${contactsCount || 0})`
-													: `${selectedContactIds.length} contacts selected`
-												}
-											</span>
+									{/* Search */}
+									<div className="mb-4">
+										<div className="flex items-center gap-4">
+											{/* Search input */}
+											<div className="flex-1 relative">
+												<input
+													type="text"
+													placeholder="Search contacts..."
+													value={contactSearch}
+													onChange={(e) => setContactSearch(e.target.value)}
+													className={`w-full px-3 py-2 border border-neutral-300 rounded text-sm pr-8 transition ease-in-out focus:border-neutral-800 focus:ring-neutral-800 ${
+														contactSearch !== debouncedSearch ? 'border-blue-300 bg-blue-50' : ''
+													}`}
+												/>
+												{contactSearch !== debouncedSearch && (
+													<div className="absolute right-3 top-1/2 transform -translate-y-1/2">
+														<Ring size={16} />
+													</div>
+												)}
+											</div>
+											
+											{/* Buttons */}
 											<div className="flex gap-2">
 												<button
 													type="button"
 													onClick={selectAllContacts}
-													className="text-xs px-2 py-1 bg-blue-100 text-blue-800 rounded hover:bg-blue-200"
+													className="flex items-center justify-center gap-x-1 rounded border border-neutral-300 bg-white px-4 py-2 text-center text-sm font-medium text-neutral-800 transition ease-in-out hover:bg-neutral-100"
 												>
 													Select All ({contactsCount || 0})
 												</button>
@@ -262,7 +275,7 @@ export default function Index() {
 													<button
 														type="button"
 														onClick={selectCurrentPageContacts}
-														className="text-xs px-2 py-1 bg-green-100 text-green-800 rounded hover:bg-green-200"
+														className="flex items-center justify-center gap-x-1 rounded border border-neutral-300 bg-white px-4 py-2 text-center text-sm font-medium text-neutral-800 transition ease-in-out hover:bg-neutral-100"
 													>
 														Select Page ({paginatedContacts.contacts.length})
 													</button>
@@ -270,30 +283,12 @@ export default function Index() {
 												<button
 													type="button"
 													onClick={clearSelectedContacts}
-													className="text-xs px-2 py-1 bg-red-100 text-red-800 rounded hover:bg-red-200"
+													className="flex items-center justify-center gap-x-1 rounded border border-neutral-300 bg-white px-4 py-2 text-center text-sm font-medium text-neutral-800 transition ease-in-out hover:bg-neutral-100"
 												>
 													Clear All
 												</button>
 											</div>
 										</div>
-									</div>
-
-									{/* Search */}
-									<div className="mb-4 relative">
-										<input
-											type="text"
-											placeholder="Search contacts..."
-											value={contactSearch}
-											onChange={(e) => setContactSearch(e.target.value)}
-											className={`w-full px-3 py-2 border border-gray-300 rounded-md text-sm pr-8 ${
-												contactSearch !== debouncedSearch ? 'border-blue-300 bg-blue-50' : ''
-											}`}
-										/>
-										{contactSearch !== debouncedSearch && (
-											<div className="absolute right-3 top-1/2 transform -translate-y-1/2">
-												<Ring size={16} />
-											</div>
-										)}
 									</div>
 
 									{/* Contact List */}
@@ -353,7 +348,10 @@ export default function Index() {
 									{paginatedContacts && paginatedContacts.totalPages > 1 && (
 										<div className="flex justify-between items-center mt-4">
 											<span className="text-sm text-gray-600">
-												Page {paginatedContacts.page} of {paginatedContacts.totalPages}
+												Page {paginatedContacts.page} of {paginatedContacts.totalPages} - 												{isSelectingAll 
+													? `All contacts selected (${contactsCount || 0})`
+													: `${selectedContactIds.length} contacts selected`
+												}
 											</span>
 											<div className="flex gap-2">
 												<button

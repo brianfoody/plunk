@@ -1,19 +1,21 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { ContactSchemas } from "@plunk/shared";
 import type { Template } from "@prisma/client";
+import { Ring } from "@uiball/loaders";
 import dayjs from "dayjs";
 import { AnimatePresence, motion } from "framer-motion";
 import { Edit2, Plus } from "lucide-react";
 import Link from "next/link";
-import React, { useState } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { type FieldError, useFieldArray, useForm } from "react-hook-form";
 import { toast } from "sonner";
 import { z } from "zod";
 import { Card, Empty, FullscreenLoader, Modal, Skeleton, Table, Toggle, Dropdown } from "../../components";
 import { Dashboard } from "../../layouts";
-import { searchContacts, useContacts } from "../../lib/hooks/contacts";
+import { usePaginatedContacts, useContactsCount } from "../../lib/hooks/contacts";
 import { useActiveProject } from "../../lib/hooks/projects";
 import { useUser } from "../../lib/hooks/users";
+import { useDebounce } from "../../lib/hooks/useDebounce";
 import { network } from "../../lib/network";
 
 interface ContactValues {
@@ -31,14 +33,27 @@ interface ContactValues {
  *
  */
 export default function Index() {
-        const [page, setPage] = useState(1);
-        const [query, setQuery] = useState<string>();
-        const [statusFilter, setStatusFilter] = useState<string>("all");
+	const [page, setPage] = useState(1);
+	const [search, setSearch] = useState("");
+	const [statusFilter, setStatusFilter] = useState<string>("all");
+	
+	// Debounce search input
+	const debouncedSearch = useDebounce(search, 300);
+	
+	// Reset page when search changes
+	useEffect(() => {
+		setPage(1);
+	}, [debouncedSearch]);
 
 	const project = useActiveProject();
 	const { data: user } = useUser();
-	const { data: contacts, mutate } = useContacts(page);
-	const { data: search } = searchContacts(query);
+	const { data: contactsCount } = useContactsCount();
+	const { data: paginatedContacts, isLoading, error, mutate } = usePaginatedContacts(
+		page,
+		20, // 20 contacts per page
+		debouncedSearch,
+		statusFilter === "all" ? undefined : statusFilter === "subscribed"
+	);
 
 	const [contactModal, setContactModal] = useState(false);
 
@@ -117,163 +132,99 @@ export default function Index() {
 	};
 
 	const renderContacts = () => {
-		if (!contacts && !search) {
+		if (isLoading || !paginatedContacts) {
 			return <Skeleton type={"table"} />;
 		}
-
-		if (query && !search) {
-			return <Skeleton type={"table"} />;
-		}
-
-               if (search && query !== undefined) {
-                        const filtered = search.contacts
-                                .filter((c) =>
-                                        statusFilter === "all"
-                                                ? true
-                                                : statusFilter === "subscribed"
-                                                ? c.subscribed
-                                                : !c.subscribed,
-                                );
-
-                        if (filtered.length > 0) {
-                                return (
-                                        <>
-                                                <Table
-                                                        values={filtered
-                                                                .sort((a, b) => {
-                                                                        const aTrigger = a.triggers.length > 0 ? a.triggers.sort()[0].createdAt : a.createdAt;
-
-                                                                        const bTrigger = b.triggers.length > 0 ? b.triggers.sort()[0].createdAt : b.createdAt;
-
-                                                                        return bTrigger > aTrigger ? 1 : -1;
-                                                                })
-                                                                .map((u) => {
-                                                                        return {
-                                                                                Email: u.email,
-                                                                                "Last Activity": dayjs()
-                                                                                        .to(
-                                                                                                [...u.triggers, ...u.emails].length > 0
-                                                                                                        ? [...u.triggers, ...u.emails].sort((a, b) => {
-                                                                                                                return a.createdAt > b.createdAt ? -1 : 1;
-                                                                                                        })[0].createdAt
-                                                                                                        : u.createdAt,
-                                                                                        )
-                                                                                        .toString(),
-                                                                                Subscribed: u.subscribed,
-                                                                                Edit: (
-                                                                                        <Link href={`/contacts/${u.id}`} className={"transition hover:text-neutral-800"}>
-                                                                                                <Edit2 size={18} />
-                                                                                        </Link>
-                                                                                ),
-                                                                        };
-                                                                })}
-                                                />
-                                        </>
-                                );
-                        }
-                        return (
-                                <>
-                                        <Empty
-                                                icon={
-							<svg width="24" height="24" fill="none" viewBox="0 0 24 24">
-								<path
-									stroke="currentColor"
-									strokeLinecap="round"
-									strokeLinejoin="round"
-									strokeWidth="1.5"
-									d="M19.25 19.25L15.5 15.5M4.75 11C4.75 7.54822 7.54822 4.75 11 4.75C14.4518 4.75 17.25 7.54822 17.25 11C17.25 14.4518 14.4518 17.25 11 17.25C7.54822 17.25 4.75 14.4518 4.75 11Z"
-								/>
-							</svg>
-						}
-						title={"No contacts found"}
-						description={`Your query ${query} did not return any contacts`}
-					/>
-				</>
+		
+		if (error) {
+			return (
+				<div className="border rounded-md p-4 text-center text-red-500">
+					<div className="text-sm">Error loading contacts. Please try again.</div>
+				</div>
 			);
 		}
+		
 
-               if (contacts) {
-                        const filtered = contacts.contacts.filter((c) =>
-                                statusFilter === "all"
-                                        ? true
-                                        : statusFilter === "subscribed"
-                                        ? c.subscribed
-                                        : !c.subscribed,
-                        );
-
-                        if (filtered.length > 0) {
-                                return (
-                                        <>
-                                                <Table
-                                                        values={filtered
-                                                                .sort((a, b) => {
-                                                                        const aTrigger = a.triggers.length > 0 ? a.triggers.sort()[0].createdAt : a.createdAt;
-
-                                                                        const bTrigger = b.triggers.length > 0 ? b.triggers.sort()[0].createdAt : b.createdAt;
-
-									return bTrigger > aTrigger ? 1 : -1;
-                                                                })
-                                                                .map((u) => {
-                                                                        return {
-                                                                                Email: u.email,
-                                                                                "Last Activity": dayjs()
-                                                                                        .to(
-												u.triggers.length > 0
-													? u.triggers.sort((a, b) => {
-															return a.createdAt > b.createdAt ? -1 : 1;
-														})[0].createdAt
-													: u.createdAt,
-											)
-											.toString(),
-										Subscribed: u.subscribed,
-										Edit: (
-											<Link href={`/contacts/${u.id}`} className={"transition hover:text-neutral-800"}>
-												<Edit2 size={18} />
-											</Link>
-										),
-									};
-                                                                })}
-                                                />
-                                                <nav className="flex items-center justify-between py-3" aria-label="Pagination">
-                                                        <div className="hidden sm:block">
-                                                                <p className="text-sm text-neutral-700">
-                                                                        Showing <span className="font-medium">{(page - 1) * 20}</span> to{" "}
-                                                                        <span className="font-medium">{page * 20}</span> of <span className="font-medium">{filtered.length}</span>{" "}
-                                                                        contacts
-                                                                </p>
-                                                        </div>
-							<div className="flex flex-1 justify-between gap-1 sm:justify-end">
-								{page > 1 && (
-									<button
-										onClick={() => setPage(page - 1)}
-										className={
-											"flex w-28 items-center justify-center gap-x-0.5 rounded bg-neutral-800 py-2 text-center text-sm font-medium text-white"
-										}
-									>
-										Previous
-									</button>
-								)}
-								{page < Math.ceil(contacts.count / 20) && (
-									<button
-										onClick={() => setPage(page + 1)}
-										className={
-											"flex w-28 items-center justify-center gap-x-0.5 rounded bg-neutral-800 py-2 text-center text-sm font-medium text-white"
-										}
-									>
-										Next
-									</button>
-								)}
-							</div>
-						</nav>
-					</>
-				);
-			}
+		if (paginatedContacts.contacts.length > 0) {
 			return (
 				<>
-					<Empty title={"No contacts"} description={"New contacts will automatically be added when they trigger an event"} />
+					<Table
+						values={paginatedContacts.contacts
+							.sort((a, b) => {
+								const aTrigger = a.triggers.length > 0 ? a.triggers.sort()[0].createdAt : a.createdAt;
+								const bTrigger = b.triggers.length > 0 ? b.triggers.sort()[0].createdAt : b.createdAt;
+								return bTrigger > aTrigger ? 1 : -1;
+							})
+							.map((u) => {
+								return {
+									Email: u.email,
+									"Last Activity": dayjs()
+										.to(
+											u.triggers.length > 0
+												? u.triggers.sort((a, b) => {
+														return a.createdAt > b.createdAt ? -1 : 1;
+													})[0].createdAt
+												: u.createdAt,
+										)
+										.toString(),
+									Subscribed: u.subscribed,
+									Edit: (
+										<Link href={`/contacts/${u.id}`} className={"transition hover:text-neutral-800"}>
+											<Edit2 size={18} />
+										</Link>
+									),
+								};
+							})}
+					/>
+					
+					{/* Pagination */}
+					{paginatedContacts.totalPages > 1 && (
+						<nav className="flex items-center justify-between py-3" aria-label="Pagination">
+							<div className="hidden sm:block">
+								<p className="text-sm text-neutral-700">
+									Showing <span className="font-medium">{(page - 1) * 20 + 1}</span> to{" "}
+									<span className="font-medium">
+										{Math.min(page * 20, paginatedContacts.total)}
+									</span>{" "}
+									of <span className="font-medium">{paginatedContacts.total}</span> contacts
+								</p>
+							</div>
+							<div className="flex flex-1 justify-between gap-1 sm:justify-end">
+								<button
+									onClick={() => setPage(prev => Math.max(1, prev - 1))}
+									disabled={page <= 1}
+									className={
+										"flex w-28 items-center justify-center gap-x-0.5 rounded bg-neutral-800 py-2 text-center text-sm font-medium text-white disabled:opacity-50 disabled:cursor-not-allowed"
+									}
+								>
+									Previous
+								</button>
+								<button
+									onClick={() => setPage(prev => Math.min(paginatedContacts.totalPages, prev + 1))}
+									disabled={page >= paginatedContacts.totalPages}
+									className={
+										"flex w-28 items-center justify-center gap-x-0.5 rounded bg-neutral-800 py-2 text-center text-sm font-medium text-white disabled:opacity-50 disabled:cursor-not-allowed"
+									}
+								>
+									Next
+								</button>
+							</div>
+						</nav>
+					)}
 				</>
 			);
 		}
+
+		return (
+			<Empty 
+				title={"No contacts"} 
+				description={
+					debouncedSearch 
+						? `No contacts found matching "${debouncedSearch}"`
+						: "New contacts will automatically be added when they trigger an event"
+				} 
+			/>
+		);
 	};
 
 	return (
@@ -458,33 +409,38 @@ export default function Index() {
 					title={"Contacts"}
 					description={"View and manage your contacts"}
 					actions={
-                                                <div className={"grid w-full gap-3 md:w-fit md:grid-cols-3"}>
-                                                        <input
-                                                                onChange={(e) => setQuery(e.target.value)}
-                                                                autoComplete={"off"}
-                                                                type="search"
-                                                                placeholder={"Search email or metadata"}
-                                                                className={
-                                                                        "rounded border-neutral-300 transition ease-in-out focus:border-neutral-800 focus:ring-neutral-800 sm:text-sm"
-                                                                }
-                                                        />
+						<div className={"flex w-full gap-3 md:w-fit md:flex-row items-center"}>
+							<div className="relative flex-1 md:flex-initial">
+								<input
+									onChange={(e) => setSearch(e.target.value)}
+									value={search}
+									autoComplete={"off"}
+									type="text"
+									placeholder={"Search email or metadata..."}
+									className={`w-[250px] rounded border-neutral-300 px-3 transition ease-in-out focus:border-neutral-800 focus:ring-neutral-800 sm:text-sm pr-10 ${
+										search !== debouncedSearch ? 'border-blue-300 bg-blue-50' : ''
+									}`}
+								/>
 
-                                                        <Dropdown
-                                                                onChange={(v) => setStatusFilter(v)}
-                                                                values={[
-                                                                        { name: "All", value: "all" },
-                                                                        { name: "Subscribed", value: "subscribed" },
-                                                                        { name: "Unsubscribed", value: "unsubscribed" },
-                                                                ]}
-                                                                selectedValue={statusFilter}
-                                                        />
+							</div>
 
-                                                        <motion.button
+							<Dropdown
+								onChange={(v) => setStatusFilter(v)}
+								values={[
+									{ name: "All", value: "all" },
+									{ name: "Subscribed", value: "subscribed" },
+									{ name: "Unsubscribed", value: "unsubscribed" },
+								]}
+								selectedValue={statusFilter}
+								className={"h-full -mt-2 w-40"}
+							/>
+
+							<motion.button
 								onClick={() => setContactModal(true)}
 								whileHover={{ scale: 1.05 }}
 								whileTap={{ scale: 0.9 }}
 								className={
-									"flex items-center justify-center gap-x-1 rounded bg-neutral-800 px-8 py-2 text-center text-sm font-medium text-white"
+									"flex items-center gap-x-1 rounded bg-neutral-800 px-8 py-2 text-center text-sm font-medium text-white"
 								}
 							>
 								<Plus strokeWidth={1.5} size={18} />

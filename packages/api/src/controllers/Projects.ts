@@ -210,7 +210,7 @@ export class Projects {
         triggers: { select: { createdAt: true } },
         emails: { select: { createdAt: true } },
       },
-      orderBy: [{ createdAt: "desc" }],
+      orderBy: [{ email: "asc" }, { createdAt: "desc" }],
     });
 
     return res.status(200).json({
@@ -331,7 +331,7 @@ export class Projects {
           data: true,
           triggers: { select: { createdAt: true, eventId: true } },
         },
-        orderBy: { createdAt: "desc" },
+        orderBy: [{ email: "asc" }, { createdAt: "desc" }],
         take: limit,
         skip: (page - 1) * limit,
       }),

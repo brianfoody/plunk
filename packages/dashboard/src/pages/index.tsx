@@ -160,7 +160,7 @@ export default function Index() {
 					</div>
 
 					<Card title={"Activity feed"}>
-						{feed ? (
+						{feed && Array.isArray(feed) ? (
 							feed.length === 0 ? (
 								<>
 									<Empty
