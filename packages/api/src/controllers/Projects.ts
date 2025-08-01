@@ -1,11 +1,4 @@
-import {
-  Controller,
-  Delete,
-  Get,
-  Middleware,
-  Post,
-  Put,
-} from "@overnightjs/core";
+import { Controller, Delete, Get, Middleware, Post, Put } from "@overnightjs/core";
 import { IdentitySchemas, ProjectSchemas, UtilitySchemas } from "@plunk/shared";
 import type { Request, Response } from "express";
 import z from "zod";
@@ -21,697 +14,691 @@ import { generateToken } from "../util/tokens";
 
 @Controller("projects")
 export class Projects {
-  @Get("id/:id")
-  @Middleware([isAuthenticated])
-  public async getProjectByID(req: Request, res: Response) {
-    const { id: projectId } = UtilitySchemas.id.parse(req.params);
+	@Get("id/:id")
+	@Middleware([isAuthenticated])
+	public async getProjectByID(req: Request, res: Response) {
+		const { id: projectId } = UtilitySchemas.id.parse(req.params);
 
-    const { userId } = res.locals.auth as IJwt;
+		const { userId } = res.locals.auth as IJwt;
 
-    const project = await ProjectService.id(projectId);
+		const project = await ProjectService.id(projectId);
 
-    if (!project) {
-      throw new NotFound("project");
-    }
+		if (!project) {
+			throw new NotFound("project");
+		}
 
-    const isMember = await MembershipService.isMember(projectId, userId);
+		const isMember = await MembershipService.isMember(projectId, userId);
 
-    if (!isMember) {
-      throw new NotAllowed();
-    }
+		if (!isMember) {
+			throw new NotAllowed();
+		}
 
-    return res.json(project);
-  }
+		return res.json(project);
+	}
 
-  @Get("id/:id/memberships")
-  @Middleware([isAuthenticated])
-  public async getProjectMembershipsByID(req: Request, res: Response) {
-    const { id: projectId } = UtilitySchemas.id.parse(req.params);
+	@Get("id/:id/memberships")
+	@Middleware([isAuthenticated])
+	public async getProjectMembershipsByID(req: Request, res: Response) {
+		const { id: projectId } = UtilitySchemas.id.parse(req.params);
 
-    const { userId } = res.locals.auth as IJwt;
+		const { userId } = res.locals.auth as IJwt;
 
-    const project = await ProjectService.id(projectId);
+		const project = await ProjectService.id(projectId);
 
-    if (!project) {
-      throw new NotFound("project");
-    }
+		if (!project) {
+			throw new NotFound("project");
+		}
 
-    const isMember = await MembershipService.isMember(projectId, userId);
+		const isMember = await MembershipService.isMember(projectId, userId);
 
-    if (!isMember) {
-      throw new NotAllowed();
-    }
+		if (!isMember) {
+			throw new NotAllowed();
+		}
 
-    const memberships = await ProjectService.memberships(projectId);
+		const memberships = await ProjectService.memberships(projectId);
 
-    return res.status(200).json(memberships);
-  }
+		return res.status(200).json(memberships);
+	}
 
-  @Get("id/:id/usage")
-  @Middleware([isAuthenticated])
-  public async getProjectUsageByID(req: Request, res: Response) {
-    const { id: projectId } = UtilitySchemas.id.parse(req.params);
+	@Get("id/:id/usage")
+	@Middleware([isAuthenticated])
+	public async getProjectUsageByID(req: Request, res: Response) {
+		const { id: projectId } = UtilitySchemas.id.parse(req.params);
 
-    const { userId } = res.locals.auth as IJwt;
+		const { userId } = res.locals.auth as IJwt;
 
-    const project = await ProjectService.id(projectId);
+		const project = await ProjectService.id(projectId);
 
-    if (!project) {
-      throw new NotFound("project");
-    }
+		if (!project) {
+			throw new NotFound("project");
+		}
 
-    const isMember = await MembershipService.isMember(projectId, userId);
+		const isMember = await MembershipService.isMember(projectId, userId);
 
-    if (!isMember) {
-      throw new NotAllowed();
-    }
+		if (!isMember) {
+			throw new NotAllowed();
+		}
 
-    const usage = await ProjectService.usage(projectId);
+		const usage = await ProjectService.usage(projectId);
 
-    return res.status(200).json(usage);
-  }
+		return res.status(200).json(usage);
+	}
 
-  @Get("id/:id/events")
-  @Middleware([isAuthenticated])
-  public async getProjectEventsByID(req: Request, res: Response) {
-    const { id: projectId } = UtilitySchemas.id.parse(req.params);
+	@Get("id/:id/events")
+	@Middleware([isAuthenticated])
+	public async getProjectEventsByID(req: Request, res: Response) {
+		const { id: projectId } = UtilitySchemas.id.parse(req.params);
 
-    const { triggers } = z
-      .object({
-        triggers: z
-          .boolean()
-          .optional()
-          .default(true)
-          .or(z.string().transform((str) => str.toLowerCase() === "true")),
-      })
-      .parse(req.query);
+		const { triggers } = z
+			.object({
+				triggers: z
+					.boolean()
+					.optional()
+					.default(true)
+					.or(z.string().transform((str) => str.toLowerCase() === "true")),
+			})
+			.parse(req.query);
 
-    const { userId } = res.locals.auth as IJwt;
+		const { userId } = res.locals.auth as IJwt;
 
-    const project = await ProjectService.id(projectId);
+		const project = await ProjectService.id(projectId);
 
-    if (!project) {
-      throw new NotFound("project");
-    }
+		if (!project) {
+			throw new NotFound("project");
+		}
 
-    const isMember = await MembershipService.isMember(projectId, userId);
+		const isMember = await MembershipService.isMember(projectId, userId);
 
-    if (!isMember) {
-      throw new NotAllowed();
-    }
+		if (!isMember) {
+			throw new NotAllowed();
+		}
 
-    const events = await ProjectService.events(projectId, triggers);
+		const events = await ProjectService.events(projectId, triggers);
 
-    return res.status(200).json(events);
-  }
+		return res.status(200).json(events);
+	}
 
-  @Get("id/:id/actions")
-  @Middleware([isAuthenticated])
-  public async getProjectActionsByID(req: Request, res: Response) {
-    const { id: projectId } = UtilitySchemas.id.parse(req.params);
+	@Get("id/:id/actions")
+	@Middleware([isAuthenticated])
+	public async getProjectActionsByID(req: Request, res: Response) {
+		const { id: projectId } = UtilitySchemas.id.parse(req.params);
 
-    const { userId } = res.locals.auth as IJwt;
+		const { userId } = res.locals.auth as IJwt;
 
-    const project = await ProjectService.id(projectId);
+		const project = await ProjectService.id(projectId);
 
-    if (!project) {
-      throw new NotFound("project");
-    }
+		if (!project) {
+			throw new NotFound("project");
+		}
 
-    const isMember = await MembershipService.isMember(projectId, userId);
+		const isMember = await MembershipService.isMember(projectId, userId);
 
-    if (!isMember) {
-      throw new NotAllowed();
-    }
+		if (!isMember) {
+			throw new NotAllowed();
+		}
 
-    const actions = await ProjectService.actions(projectId);
+		const actions = await ProjectService.actions(projectId);
 
-    return res.status(200).json(actions);
-  }
+		return res.status(200).json(actions);
+	}
 
-  @Get("id/:id/templates")
-  @Middleware([isAuthenticated])
-  public async getProjectTemplatesByID(req: Request, res: Response) {
-    const { id: projectId } = UtilitySchemas.id.parse(req.params);
+	@Get("id/:id/templates")
+	@Middleware([isAuthenticated])
+	public async getProjectTemplatesByID(req: Request, res: Response) {
+		const { id: projectId } = UtilitySchemas.id.parse(req.params);
 
-    const { userId } = res.locals.auth as IJwt;
+		const { userId } = res.locals.auth as IJwt;
 
-    const project = await ProjectService.id(projectId);
+		const project = await ProjectService.id(projectId);
 
-    if (!project) {
-      throw new NotFound("project");
-    }
+		if (!project) {
+			throw new NotFound("project");
+		}
 
-    const isMember = await MembershipService.isMember(projectId, userId);
+		const isMember = await MembershipService.isMember(projectId, userId);
 
-    if (!isMember) {
-      throw new NotAllowed();
-    }
+		if (!isMember) {
+			throw new NotAllowed();
+		}
 
-    const templates = await ProjectService.templates(projectId);
+		const templates = await ProjectService.templates(projectId);
 
-    return res.status(200).json(templates);
-  }
+		return res.status(200).json(templates);
+	}
 
-  @Get("id/:id/contacts/search")
-  @Middleware([isAuthenticated])
-  public async searchContacts(req: Request, res: Response) {
-    const { id: projectId } = UtilitySchemas.id.parse(req.params);
+	@Get("id/:id/contacts/search")
+	@Middleware([isAuthenticated])
+	public async searchContacts(req: Request, res: Response) {
+		const { id: projectId } = UtilitySchemas.id.parse(req.params);
 
-    const { userId } = res.locals.auth as IJwt;
+		const { userId } = res.locals.auth as IJwt;
 
-    const project = await ProjectService.id(projectId);
+		const project = await ProjectService.id(projectId);
 
-    if (!project) {
-      throw new NotFound("project");
-    }
+		if (!project) {
+			throw new NotFound("project");
+		}
 
-    const isMember = await MembershipService.isMember(projectId, userId);
+		const isMember = await MembershipService.isMember(projectId, userId);
 
-    if (!isMember) {
-      throw new NotAllowed();
-    }
+		if (!isMember) {
+			throw new NotAllowed();
+		}
 
-    const { query } = z.object({ query: z.string().min(1) }).parse(req.query);
+		const { query } = z.object({ query: z.string().min(1) }).parse(req.query);
 
-    const contacts = await prisma.contact.findMany({
-      where: {
-        projectId: project.id,
-        OR: [
-          { email: { contains: query, mode: "insensitive" } },
-          { data: { contains: query, mode: "insensitive" } },
-        ],
-      },
-      select: {
-        id: true,
-        email: true,
-        subscribed: true,
-        createdAt: true,
-        triggers: { select: { createdAt: true } },
-        emails: { select: { createdAt: true } },
-      },
-      orderBy: [{ email: "asc" }, { createdAt: "desc" }],
-    });
-
-    return res.status(200).json({
-      contacts,
-      count: contacts.length,
-    });
-  }
-
-  @Get("id/:id/contacts/count")
-  @Middleware([isAuthenticated])
-  public async getProjectContactCountByID(req: Request, res: Response) {
-    const { id: projectId } = UtilitySchemas.id.parse(req.params);
-
-    const { userId } = res.locals.auth as IJwt;
-
-    const project = await ProjectService.id(projectId);
-
-    if (!project) {
-      throw new NotFound("project");
-    }
-
-    const isMember = await MembershipService.isMember(projectId, userId);
-
-    if (!isMember) {
-      throw new NotAllowed();
-    }
-
-    const count = await ProjectService.contacts.count(projectId);
-
-    return res.status(200).json(count);
-  }
-
-  @Get("id/:id/contacts/metadata")
-  @Middleware([isAuthenticated])
-  public async getProjectMetadataByID(req: Request, res: Response) {
-    const { id: projectId } = UtilitySchemas.id.parse(req.params);
-
-    const { userId } = res.locals.auth as IJwt;
-
-    const project = await ProjectService.id(projectId);
-
-    if (!project) {
-      throw new NotFound("project");
-    }
-
-    const isMember = await MembershipService.isMember(projectId, userId);
-
-    if (!isMember) {
-      throw new NotAllowed();
-    }
-
-    const metadata = await ProjectService.metadata(projectId);
-
-    return res.status(200).json(metadata);
-  }
-
-  @Get("id/:id/contacts/paginated")
-  @Middleware([isAuthenticated])
-  public async getProjectContactsPaginated(req: Request, res: Response) {
-    const { id: projectId } = UtilitySchemas.id.parse(req.params);
-    const {
-      page,
-      limit = 50,
-      search,
-      subscribed,
-    } = z
-      .object({
-        page: z
-          .string()
-          .transform((val) => parseInt(val, 10))
-          .pipe(z.number().min(1))
-          .default("1"),
-        limit: z
-          .string()
-          .transform((val) => parseInt(val, 10))
-          .pipe(z.number().min(1).max(100))
-          .default("50"),
-        search: z.string().optional(),
-        subscribed: z
-          .string()
-          .transform((val) => val === "true")
-          .pipe(z.boolean())
-          .optional(),
-      })
-      .parse(req.query);
-
-    const { userId } = res.locals.auth as IJwt;
-
-    const project = await ProjectService.id(projectId);
-    if (!project) {
-      throw new NotFound("project");
-    }
-
-    const isMember = await MembershipService.isMember(projectId, userId);
-    if (!isMember) {
-      throw new NotAllowed();
-    }
-
-    const where: any = {
-      projectId,
-      ...(subscribed !== undefined && { subscribed }),
-      ...(search && {
-        OR: [
-          { email: { contains: search, mode: "insensitive" } },
-          { data: { contains: search, mode: "insensitive" } },
-        ],
-      }),
-    };
-
-    const [contacts, total] = await Promise.all([
-      prisma.contact.findMany({
-        where,
-        select: {
-          id: true,
-          email: true,
-          subscribed: true,
-          createdAt: true,
-          data: true,
-          triggers: { select: { createdAt: true, eventId: true } },
-        },
-        orderBy: [{ email: "asc" }, { createdAt: "desc" }],
-        take: limit,
-        skip: (page - 1) * limit,
-      }),
-      prisma.contact.count({ where }),
-    ]);
-
-    return res.status(200).json({
-      contacts,
-      total,
-      page,
-      limit,
-      totalPages: Math.ceil(total / limit),
-    });
-  }
-
-  @Get("id/:id/contacts")
-  @Middleware([isAuthenticated])
-  public async getProjectContactsByID(req: Request, res: Response) {
-    const { id: projectId } = UtilitySchemas.id.parse(req.params);
-    const { page } = UtilitySchemas.pagination.parse(req.query);
-
-    const { userId } = res.locals.auth as IJwt;
-
-    const project = await ProjectService.id(projectId);
-
-    if (!project) {
-      throw new NotFound("project");
-    }
-
-    const isMember = await MembershipService.isMember(projectId, userId);
-
-    if (!isMember) {
-      throw new NotAllowed();
-    }
-
-    if (page === 0) {
-      const contacts = await ProjectService.contacts.get(projectId);
-
-      return res.status(200).json({ contacts, count: contacts?.length });
-    }
-    const contacts = await ProjectService.contacts.paginated(projectId, page);
-    const count = await ProjectService.contacts.count(projectId);
-
-    return res.status(200).json({ contacts, count });
-  }
-
-  @Get("id/:id/feed")
-  @Middleware([isAuthenticated])
-  public async getProjectFeedByID(req: Request, res: Response) {
-    const { id: projectId } = UtilitySchemas.id.parse(req.params);
-    const { page, limit = 20 } = z
-      .object({
-        page: z
-          .string()
-          .transform((val) => parseInt(val, 10))
-          .pipe(z.number().min(1))
-          .default("1"),
-        limit: z
-          .string()
-          .transform((val) => parseInt(val, 10))
-          .pipe(z.number().min(1).max(100))
-          .default("20"),
-      })
-      .parse(req.query);
-
-    const { userId } = res.locals.auth as IJwt;
-
-    const project = await ProjectService.id(projectId);
-
-    if (!project) {
-      throw new NotFound("project");
-    }
+		const contacts = await prisma.contact.findMany({
+			where: {
+				projectId: project.id,
+				OR: [{ email: { contains: query, mode: "insensitive" } }, { data: { contains: query, mode: "insensitive" } }],
+			},
+			select: {
+				id: true,
+				email: true,
+				subscribed: true,
+				createdAt: true,
+				triggers: { select: { createdAt: true } },
+				emails: { select: { createdAt: true } },
+			},
+			orderBy: [{ email: "asc" }, { createdAt: "desc" }],
+		});
 
-    const isMember = await MembershipService.isMember(projectId, userId);
-
-    if (!isMember) {
-      throw new NotAllowed();
-    }
+		return res.status(200).json({
+			contacts,
+			count: contacts.length,
+		});
+	}
+
+	@Get("id/:id/contacts/count")
+	@Middleware([isAuthenticated])
+	public async getProjectContactCountByID(req: Request, res: Response) {
+		const { id: projectId } = UtilitySchemas.id.parse(req.params);
+
+		const { userId } = res.locals.auth as IJwt;
+
+		const project = await ProjectService.id(projectId);
+
+		if (!project) {
+			throw new NotFound("project");
+		}
+
+		const isMember = await MembershipService.isMember(projectId, userId);
+
+		if (!isMember) {
+			throw new NotAllowed();
+		}
+
+		const count = await ProjectService.contacts.count(projectId);
+
+		return res.status(200).json(count);
+	}
+
+	@Get("id/:id/contacts/metadata")
+	@Middleware([isAuthenticated])
+	public async getProjectMetadataByID(req: Request, res: Response) {
+		const { id: projectId } = UtilitySchemas.id.parse(req.params);
+
+		const { userId } = res.locals.auth as IJwt;
+
+		const project = await ProjectService.id(projectId);
+
+		if (!project) {
+			throw new NotFound("project");
+		}
+
+		const isMember = await MembershipService.isMember(projectId, userId);
+
+		if (!isMember) {
+			throw new NotAllowed();
+		}
+
+		const metadata = await ProjectService.metadata(projectId);
+
+		return res.status(200).json(metadata);
+	}
+
+	@Get("id/:id/contacts/paginated")
+	@Middleware([isAuthenticated])
+	public async getProjectContactsPaginated(req: Request, res: Response) {
+		const { id: projectId } = UtilitySchemas.id.parse(req.params);
+		const {
+			page,
+			limit = 50,
+			search,
+			subscribed,
+		} = z
+			.object({
+				page: z
+					.string()
+					.transform((val) => parseInt(val, 10))
+					.pipe(z.number().min(1))
+					.default("1"),
+				limit: z
+					.string()
+					.transform((val) => parseInt(val, 10))
+					.pipe(z.number().min(1).max(100))
+					.default("50"),
+				search: z.string().optional(),
+				subscribed: z
+					.string()
+					.transform((val) => val === "true")
+					.pipe(z.boolean())
+					.optional(),
+			})
+			.parse(req.query);
+
+		const { userId } = res.locals.auth as IJwt;
+
+		const project = await ProjectService.id(projectId);
+		if (!project) {
+			throw new NotFound("project");
+		}
+
+		const isMember = await MembershipService.isMember(projectId, userId);
+		if (!isMember) {
+			throw new NotAllowed();
+		}
+
+		const where: any = {
+			projectId,
+			...(subscribed !== undefined && { subscribed }),
+			...(search && {
+				OR: [{ email: { contains: search, mode: "insensitive" } }, { data: { contains: search, mode: "insensitive" } }],
+			}),
+		};
+
+		const [contacts, total] = await Promise.all([
+			prisma.contact.findMany({
+				where,
+				select: {
+					id: true,
+					email: true,
+					subscribed: true,
+					createdAt: true,
+					data: true,
+					triggers: { select: { createdAt: true, eventId: true } },
+				},
+				orderBy: [{ email: "asc" }, { createdAt: "desc" }],
+				take: limit,
+				skip: (page - 1) * limit,
+			}),
+			prisma.contact.count({ where }),
+		]);
+
+		return res.status(200).json({
+			contacts,
+			total,
+			page,
+			limit,
+			totalPages: Math.ceil(total / limit),
+		});
+	}
+
+	@Get("id/:id/contacts")
+	@Middleware([isAuthenticated])
+	public async getProjectContactsByID(req: Request, res: Response) {
+		const { id: projectId } = UtilitySchemas.id.parse(req.params);
+		const { page } = UtilitySchemas.pagination.parse(req.query);
+
+		const { userId } = res.locals.auth as IJwt;
+
+		const project = await ProjectService.id(projectId);
+
+		if (!project) {
+			throw new NotFound("project");
+		}
+
+		const isMember = await MembershipService.isMember(projectId, userId);
+
+		if (!isMember) {
+			throw new NotAllowed();
+		}
+
+		if (page === 0) {
+			const contacts = await ProjectService.contacts.get(projectId);
+
+			return res.status(200).json({ contacts, count: contacts?.length });
+		}
+		const contacts = await ProjectService.contacts.paginated(projectId, page);
+		const count = await ProjectService.contacts.count(projectId);
+
+		return res.status(200).json({ contacts, count });
+	}
+
+	@Get("id/:id/feed")
+	@Middleware([isAuthenticated])
+	public async getProjectFeedByID(req: Request, res: Response) {
+		const { id: projectId } = UtilitySchemas.id.parse(req.params);
+		const { page, limit = 20 } = z
+			.object({
+				page: z
+					.string()
+					.transform((val) => parseInt(val, 10))
+					.pipe(z.number().min(1))
+					.default("1"),
+				limit: z
+					.string()
+					.transform((val) => parseInt(val, 10))
+					.pipe(z.number().min(1).max(100))
+					.default("20"),
+			})
+			.parse(req.query);
 
-    const feed = await ProjectService.feed(projectId, page, limit);
+		const { userId } = res.locals.auth as IJwt;
 
-    return res.status(200).json(feed);
-  }
+		const project = await ProjectService.id(projectId);
 
-  @Get("id/:id/campaigns")
-  @Middleware([isAuthenticated])
-  public async getProjectCampaignsByID(req: Request, res: Response) {
-    const { id: projectId } = UtilitySchemas.id.parse(req.params);
+		if (!project) {
+			throw new NotFound("project");
+		}
 
-    const { userId } = res.locals.auth as IJwt;
+		const isMember = await MembershipService.isMember(projectId, userId);
 
-    const project = await ProjectService.id(projectId);
+		if (!isMember) {
+			throw new NotAllowed();
+		}
 
-    if (!project) {
-      throw new NotFound("project");
-    }
+		const feed = await ProjectService.feed(projectId, page, limit);
 
-    const isMember = await MembershipService.isMember(projectId, userId);
+		return res.status(200).json(feed);
+	}
 
-    if (!isMember) {
-      throw new NotAllowed();
-    }
+	@Get("id/:id/campaigns")
+	@Middleware([isAuthenticated])
+	public async getProjectCampaignsByID(req: Request, res: Response) {
+		const { id: projectId } = UtilitySchemas.id.parse(req.params);
 
-    const campaigns = await ProjectService.campaigns(projectId);
+		const { userId } = res.locals.auth as IJwt;
 
-    return res.status(200).json(campaigns);
-  }
+		const project = await ProjectService.id(projectId);
 
-  @Get("id/:id/emails/count")
-  @Middleware([isAuthenticated])
-  public async getProjectEmailCountByID(req: Request, res: Response) {
-    const { id: projectId } = UtilitySchemas.id.parse(req.params);
+		if (!project) {
+			throw new NotFound("project");
+		}
 
-    const { userId } = res.locals.auth as IJwt;
+		const isMember = await MembershipService.isMember(projectId, userId);
 
-    const project = await ProjectService.id(projectId);
+		if (!isMember) {
+			throw new NotAllowed();
+		}
 
-    if (!project) {
-      throw new NotFound("project");
-    }
+		const campaigns = await ProjectService.campaigns(projectId);
 
-    const isMember = await MembershipService.isMember(projectId, userId);
+		return res.status(200).json(campaigns);
+	}
 
-    if (!isMember) {
-      throw new NotAllowed();
-    }
+	@Get("id/:id/emails/count")
+	@Middleware([isAuthenticated])
+	public async getProjectEmailCountByID(req: Request, res: Response) {
+		const { id: projectId } = UtilitySchemas.id.parse(req.params);
 
-    const count = await ProjectService.emails.count(projectId);
+		const { userId } = res.locals.auth as IJwt;
 
-    return res.status(200).json(count);
-  }
+		const project = await ProjectService.id(projectId);
 
-  @Get("id/:id/emails")
-  @Middleware([isAuthenticated])
-  public async getProjectEmailsByID(req: Request, res: Response) {
-    const { id: projectId } = UtilitySchemas.id.parse(req.params);
+		if (!project) {
+			throw new NotFound("project");
+		}
 
-    const { userId } = res.locals.auth as IJwt;
+		const isMember = await MembershipService.isMember(projectId, userId);
 
-    const project = await ProjectService.id(projectId);
+		if (!isMember) {
+			throw new NotAllowed();
+		}
 
-    if (!project) {
-      throw new NotFound("project");
-    }
+		const count = await ProjectService.emails.count(projectId);
 
-    const isMember = await MembershipService.isMember(projectId, userId);
+		return res.status(200).json(count);
+	}
 
-    if (!isMember) {
-      throw new NotAllowed();
-    }
+	@Get("id/:id/emails")
+	@Middleware([isAuthenticated])
+	public async getProjectEmailsByID(req: Request, res: Response) {
+		const { id: projectId } = UtilitySchemas.id.parse(req.params);
 
-    const emails = await ProjectService.emails.get(projectId);
+		const { userId } = res.locals.auth as IJwt;
 
-    return res.status(200).json(emails);
-  }
+		const project = await ProjectService.id(projectId);
 
-  @Get("id/:id/analytics")
-  @Middleware([isAuthenticated])
-  public async getProjectAnalyticsByID(req: Request, res: Response) {
-    const { id: projectId } = UtilitySchemas.id.parse(req.params);
-    const { method } = ProjectSchemas.analytics.parse(req.query);
+		if (!project) {
+			throw new NotFound("project");
+		}
 
-    const { userId } = res.locals.auth as IJwt;
+		const isMember = await MembershipService.isMember(projectId, userId);
 
-    const project = await ProjectService.id(projectId);
+		if (!isMember) {
+			throw new NotAllowed();
+		}
 
-    if (!project) {
-      throw new NotFound("project");
-    }
+		const emails = await ProjectService.emails.get(projectId);
 
-    const isMember = await MembershipService.isMember(projectId, userId);
+		return res.status(200).json(emails);
+	}
 
-    if (!isMember) {
-      throw new NotAllowed();
-    }
+	@Get("id/:id/analytics")
+	@Middleware([isAuthenticated])
+	public async getProjectAnalyticsByID(req: Request, res: Response) {
+		const { id: projectId } = UtilitySchemas.id.parse(req.params);
+		const { method } = ProjectSchemas.analytics.parse(req.query);
 
-    const analytics = await ProjectService.analytics({ id: projectId, method });
+		const { userId } = res.locals.auth as IJwt;
 
-    return res.status(200).json(analytics);
-  }
+		const project = await ProjectService.id(projectId);
 
-  @Post("create")
-  @Middleware([isAuthenticated])
-  public async createProject(req: Request, res: Response) {
-    const { name, url } = ProjectSchemas.create.parse(req.body);
+		if (!project) {
+			throw new NotFound("project");
+		}
 
-    const { userId } = res.locals.auth as IJwt;
+		const isMember = await MembershipService.isMember(projectId, userId);
 
-    const user = await UserService.id(userId);
+		if (!isMember) {
+			throw new NotAllowed();
+		}
 
-    if (!user) {
-      throw new NotAuthenticated();
-    }
+		const analytics = await ProjectService.analytics({ id: projectId, method });
 
-    let secretKey = "";
-    let secretIsAvailable = false;
+		return res.status(200).json(analytics);
+	}
 
-    let publicKey = "";
-    let publicIsAvailable = false;
+	@Post("create")
+	@Middleware([isAuthenticated])
+	public async createProject(req: Request, res: Response) {
+		const { name, url } = ProjectSchemas.create.parse(req.body);
 
-    while (!secretIsAvailable) {
-      secretKey = generateToken("secret");
+		const { userId } = res.locals.auth as IJwt;
 
-      secretIsAvailable = await ProjectService.secretIsAvailable(secretKey);
-    }
+		const user = await UserService.id(userId);
 
-    while (!publicIsAvailable) {
-      publicKey = generateToken("public");
+		if (!user) {
+			throw new NotAuthenticated();
+		}
 
-      publicIsAvailable = await ProjectService.publicIsAvailable(publicKey);
-    }
+		let secretKey = "";
+		let secretIsAvailable = false;
 
-    const project = await prisma.project.create({
-      data: {
-        name,
-        url,
-        secret: secretKey,
-        public: publicKey,
-        memberships: {
-          create: [{ userId, role: "OWNER" }],
-        },
-      },
-    });
+		let publicKey = "";
+		let publicIsAvailable = false;
 
-    await redis.del(Keys.User.projects(userId));
-    await redis.del(Keys.Project.secret(project.secret));
-    await redis.del(Keys.Project.public(project.public));
-    await redis.del(Keys.Project.id(project.id));
+		while (!secretIsAvailable) {
+			secretKey = generateToken("secret");
 
-    return res.status(200).json({ success: true, data: project });
-  }
+			secretIsAvailable = await ProjectService.secretIsAvailable(secretKey);
+		}
 
-  @Post("id/:id/regenerate")
-  @Middleware([isAuthenticated])
-  public async regenerateAPIkey(req: Request, res: Response) {
-    const { userId } = res.locals.auth as IJwt;
+		while (!publicIsAvailable) {
+			publicKey = generateToken("public");
 
-    let project = await ProjectService.id(req.params.id);
+			publicIsAvailable = await ProjectService.publicIsAvailable(publicKey);
+		}
 
-    if (!project) {
-      throw new NotFound("project");
-    }
+		const project = await prisma.project.create({
+			data: {
+				name,
+				url,
+				secret: secretKey,
+				public: publicKey,
+				memberships: {
+					create: [{ userId, role: "OWNER" }],
+				},
+			},
+		});
 
-    const user = await UserService.id(userId);
+		await redis.del(Keys.User.projects(userId));
+		await redis.del(Keys.Project.secret(project.secret));
+		await redis.del(Keys.Project.public(project.public));
+		await redis.del(Keys.Project.id(project.id));
 
-    if (!user) {
-      throw new NotAuthenticated();
-    }
+		return res.status(200).json({ success: true, data: project });
+	}
 
-    const isAdmin = await MembershipService.isAdmin(project.id, userId);
+	@Post("id/:id/regenerate")
+	@Middleware([isAuthenticated])
+	public async regenerateAPIkey(req: Request, res: Response) {
+		const { userId } = res.locals.auth as IJwt;
 
-    if (!isAdmin) {
-      throw new NotAllowed();
-    }
+		let project = await ProjectService.id(req.params.id);
 
-    let secretKey = "";
-    let secretIsAvailable = false;
+		if (!project) {
+			throw new NotFound("project");
+		}
 
-    let publicKey = "";
-    let publicIsAvailable = false;
+		const user = await UserService.id(userId);
 
-    while (!secretIsAvailable) {
-      secretKey = generateToken("secret");
+		if (!user) {
+			throw new NotAuthenticated();
+		}
 
-      secretIsAvailable = await ProjectService.secretIsAvailable(secretKey);
-    }
+		const isAdmin = await MembershipService.isAdmin(project.id, userId);
 
-    while (!publicIsAvailable) {
-      publicKey = generateToken("public");
+		if (!isAdmin) {
+			throw new NotAllowed();
+		}
 
-      publicIsAvailable = await ProjectService.secretIsAvailable(publicKey);
-    }
+		let secretKey = "";
+		let secretIsAvailable = false;
 
-    project = await prisma.project.update({
-      where: { id: project.id },
-      data: { secret: secretKey, public: publicKey },
-    });
+		let publicKey = "";
+		let publicIsAvailable = false;
 
-    await redis.del(Keys.User.projects(userId));
+		while (!secretIsAvailable) {
+			secretKey = generateToken("secret");
 
-    return res.status(200).json({ success: true, project });
-  }
+			secretIsAvailable = await ProjectService.secretIsAvailable(secretKey);
+		}
 
-  @Put("update")
-  @Middleware([isAuthenticated])
-  public async updateProject(req: Request, res: Response) {
-    const { id: projectId, name, url } = ProjectSchemas.update.parse(req.body);
+		while (!publicIsAvailable) {
+			publicKey = generateToken("public");
 
-    const { userId } = res.locals.auth as IJwt;
+			publicIsAvailable = await ProjectService.secretIsAvailable(publicKey);
+		}
 
-    let project = await ProjectService.id(projectId);
+		project = await prisma.project.update({
+			where: { id: project.id },
+			data: { secret: secretKey, public: publicKey },
+		});
 
-    if (!project) {
-      throw new NotFound("project");
-    }
+		await redis.del(Keys.User.projects(userId));
 
-    const isAdmin = await MembershipService.isAdmin(projectId, userId);
+		return res.status(200).json({ success: true, project });
+	}
 
-    if (!isAdmin) {
-      throw new NotAllowed();
-    }
+	@Put("update")
+	@Middleware([isAuthenticated])
+	public async updateProject(req: Request, res: Response) {
+		const { id: projectId, name, url } = ProjectSchemas.update.parse(req.body);
 
-    project = await prisma.project.update({
-      where: { id: projectId },
-      data: {
-        name,
-        url,
-      },
-    });
+		const { userId } = res.locals.auth as IJwt;
 
-    await redis.del(Keys.Project.id(project.id));
-    await redis.del(Keys.Project.secret(project.secret));
-    await redis.del(Keys.User.projects(userId));
+		let project = await ProjectService.id(projectId);
 
-    return res.status(200).json({ success: true, data: project });
-  }
+		if (!project) {
+			throw new NotFound("project");
+		}
 
-  @Put("update/identity")
-  @Middleware([isAuthenticated])
-  public async updateIdentity(req: Request, res: Response) {
-    const { id: projectId, from } = IdentitySchemas.update.parse(req.body);
+		const isAdmin = await MembershipService.isAdmin(projectId, userId);
 
-    const { userId } = res.locals.auth as IJwt;
+		if (!isAdmin) {
+			throw new NotAllowed();
+		}
 
-    let project = await ProjectService.id(projectId);
+		project = await prisma.project.update({
+			where: { id: projectId },
+			data: {
+				name,
+				url,
+			},
+		});
 
-    if (!project) {
-      throw new NotFound("project");
-    }
+		await redis.del(Keys.Project.id(project.id));
+		await redis.del(Keys.Project.secret(project.secret));
+		await redis.del(Keys.User.projects(userId));
 
-    const isAdmin = await MembershipService.isAdmin(projectId, userId);
+		return res.status(200).json({ success: true, data: project });
+	}
 
-    if (!isAdmin) {
-      throw new NotAllowed();
-    }
+	@Put("update/identity")
+	@Middleware([isAuthenticated])
+	public async updateIdentity(req: Request, res: Response) {
+		const { id: projectId, from } = IdentitySchemas.update.parse(req.body);
 
-    project = await prisma.project.update({
-      where: { id: projectId },
-      data: {
-        from,
-      },
-    });
+		const { userId } = res.locals.auth as IJwt;
 
-    await redis.del(Keys.Project.id(project.id));
-    await redis.del(Keys.Project.secret(project.secret));
-    await redis.del(Keys.User.projects(userId));
+		let project = await ProjectService.id(projectId);
 
-    return res.status(200).json({ success: true, data: project });
-  }
+		if (!project) {
+			throw new NotFound("project");
+		}
 
-  @Delete("delete")
-  @Middleware([isAuthenticated])
-  public async deleteProject(req: Request, res: Response) {
-    const { id: projectId } = UtilitySchemas.id.parse(req.body);
+		const isAdmin = await MembershipService.isAdmin(projectId, userId);
 
-    const { userId } = res.locals.auth as IJwt;
+		if (!isAdmin) {
+			throw new NotAllowed();
+		}
 
-    const project = await ProjectService.id(projectId);
+		project = await prisma.project.update({
+			where: { id: projectId },
+			data: {
+				from,
+			},
+		});
 
-    if (!project) {
-      throw new NotFound("project");
-    }
+		await redis.del(Keys.Project.id(project.id));
+		await redis.del(Keys.Project.secret(project.secret));
+		await redis.del(Keys.User.projects(userId));
 
-    const user = await UserService.id(userId);
+		return res.status(200).json({ success: true, data: project });
+	}
 
-    if (!user) {
-      throw new NotAuthenticated();
-    }
+	@Delete("delete")
+	@Middleware([isAuthenticated])
+	public async deleteProject(req: Request, res: Response) {
+		const { id: projectId } = UtilitySchemas.id.parse(req.body);
 
-    const isOwner = await MembershipService.isOwner(projectId, userId);
+		const { userId } = res.locals.auth as IJwt;
 
-    if (!isOwner) {
-      throw new NotAllowed();
-    }
+		const project = await ProjectService.id(projectId);
 
-    await prisma.project.delete({ where: { id: project.id } });
+		if (!project) {
+			throw new NotFound("project");
+		}
 
-    await redis.del(Keys.User.projects(userId));
-    await redis.del(Keys.Project.id(projectId));
+		const user = await UserService.id(userId);
 
-    return res.status(200).json({ success: true, data: project });
-  }
+		if (!user) {
+			throw new NotAuthenticated();
+		}
+
+		const isOwner = await MembershipService.isOwner(projectId, userId);
+
+		if (!isOwner) {
+			throw new NotAllowed();
+		}
+
+		await prisma.project.delete({ where: { id: project.id } });
+
+		await redis.del(Keys.User.projects(userId));
+		await redis.del(Keys.Project.id(projectId));
+
+		return res.status(200).json({ success: true, data: project });
+	}
 }
