@@ -10,7 +10,7 @@ import { useRouter } from "next/router";
 import React, { useEffect, useState, useCallback } from "react";
 import { type FieldError, useForm } from "react-hook-form";
 import { toast } from "sonner";
-import { Alert, Card, Dropdown, Editor, FullscreenLoader, Input, MultiselectDropdown, PaginatedTable } from "../../components";
+import { Alert, Card, Dropdown, Editor, FullscreenLoader, Input, MultiselectDropdown, Table } from "../../components";
 import { Dashboard } from "../../layouts";
 import { useCampaigns } from "../../lib/hooks/campaigns";
 import { useContacts, usePaginatedContacts, useContactsCount } from "../../lib/hooks/contacts";
@@ -241,7 +241,7 @@ export default function Index() {
 									</label>
 
 									{/* Contact List */}
-									<PaginatedTable
+									<Table
 										values={
 											paginatedContacts?.contacts.map((contact) => {
 												return {
@@ -275,7 +275,7 @@ export default function Index() {
 										isSelectingAll={isSelectingAll}
 										allSelectedCount={contactsCount || 0}
 										pageSelectedCount={paginatedContacts?.contacts.length || 0}
-										renderSelectableRow={(contact, index) => {
+										renderSelectableRow={(contact: any, index: number) => {
 											const contactId = paginatedContacts?.contacts[index]?.id;
 											return (
 												<input
@@ -292,7 +292,7 @@ export default function Index() {
 												/>
 											);
 										}}
-										onRowClick={(contact, index) => {
+										onRowClick={(contact: any, index: number) => {
 											const contactId = paginatedContacts?.contacts[index]?.id;
 											if (contactId && !isSelectingAll) {
 												toggleContactSelection(contactId);

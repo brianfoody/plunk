@@ -10,18 +10,7 @@ import { useRouter } from "next/router";
 import React, { useEffect, useState } from "react";
 import { type FieldError, useForm } from "react-hook-form";
 import { toast } from "sonner";
-import {
-	Alert,
-	Badge,
-	Card,
-	Dropdown,
-	Editor,
-	FullscreenLoader,
-	Input,
-	Modal,
-	MultiselectDropdown,
-	PaginatedTable,
-} from "../../components";
+import { Alert, Badge, Card, Dropdown, Editor, FullscreenLoader, Input, Modal, MultiselectDropdown, Table } from "../../components";
 import { Dashboard } from "../../layouts";
 import { useCampaign, useCampaigns, usePaginatedCampaignEmails } from "../../lib/hooks/campaigns";
 import { useContacts, usePaginatedContacts, useContactsCount } from "../../lib/hooks/contacts";
@@ -479,7 +468,7 @@ export default function Index() {
 											</label>
 
 											{/* Contact List */}
-											<PaginatedTable
+											<Table
 												values={
 													paginatedContacts?.contacts.map((contact) => {
 														return {
@@ -513,7 +502,7 @@ export default function Index() {
 												isSelectingAll={isSelectingAll}
 												allSelectedCount={contactsCount || 0}
 												pageSelectedCount={paginatedContacts?.contacts.length || 0}
-												renderSelectableRow={(contact, index) => {
+												renderSelectableRow={(_, index: number) => {
 													const contactId = paginatedContacts?.contacts[index]?.id;
 													return (
 														<input
@@ -533,7 +522,7 @@ export default function Index() {
 														/>
 													);
 												}}
-												onRowClick={(contact, index) => {
+												onRowClick={(_, index: number) => {
 													const contactId = paginatedContacts?.contacts[index]?.id;
 													if (contactId && !isSelectingAll) {
 														toggleContactSelection(contactId);
@@ -902,7 +891,7 @@ export default function Index() {
 
 						{campaign.status !== "DRAFT" && (
 							<div className="sm:col-span-6">
-								<PaginatedTable
+								<Table
 									values={
 										paginatedEmails?.emails.map((e) => ({
 											Email: e.contact.email,

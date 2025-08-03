@@ -8,4 +8,3 @@ export * from "./Navigation";
 export * from "./Card";
 export * from "./Skeleton";
 export * from "./CodeBlock";
-export { default as PaginatedTable } from "./Table/PaginatedTable";

@@ -160,7 +160,7 @@ export default function Index() {
 					</div>
 
 					<Card title={"Activity feed"}>
-						{feed && Array.isArray(feed) ? (
+						{feed ? (
 							feed.length === 0 ? (
 								<>
 									<Empty
@@ -172,13 +172,15 @@ export default function Index() {
 							) : (
 								<>
 									<Table
-										values={feed.map((f) => {
+										values={feed.items.map((f) => {
 											if ("messageId" in f) {
 												return {
 													Email: f.contact.email,
 													Activity: (
 														<Badge type={"info"}>
-															{f.createdAt === f.updatedAt ? "Email delivered" : `Email ${f.status.toLowerCase()}`}
+															{f.createdAt === f.updatedAt
+																? "Email delivered"
+																: `Email ${f.status.toLowerCase()}`}
 														</Badge>
 													),
 													Type: <Badge type={"success"}>Email</Badge>,
