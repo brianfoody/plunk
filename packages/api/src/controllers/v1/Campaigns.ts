@@ -2,6 +2,7 @@ import { Controller, Delete, Get, Middleware, Post, Put } from "@overnightjs/cor
 import { CampaignSchemas, UtilitySchemas } from "@plunk/shared";
 import dayjs from "dayjs";
 import type { Request, Response } from "express";
+import z from "zod";
 import { prisma } from "../../database/prisma";
 import { HttpException, NotAllowed, NotFound } from "../../exceptions";
 import { type IJwt, type ISecret, isAuthenticated, isValidSecretKey } from "../../middleware/auth";
@@ -35,6 +36,47 @@ export class Campaigns {
 		}
 
 		return res.status(200).json(campaign);
+	}
+
+	@Get(":id/emails/paginated")
+	@Middleware([isAuthenticated])
+	public async getCampaignEmailsPaginated(req: Request, res: Response) {
+		const { id: campaignId } = UtilitySchemas.id.parse(req.params);
+		const {
+			page,
+			limit = 20,
+			search,
+		} = z
+			.object({
+				page: z
+					.string()
+					.transform((val) => parseInt(val, 10))
+					.pipe(z.number().min(1))
+					.default("1"),
+				limit: z
+					.string()
+					.transform((val) => parseInt(val, 10))
+					.pipe(z.number().min(1).max(100))
+					.default("50"),
+				search: z.string().optional(),
+			})
+			.parse(req.query);
+
+		const { userId } = res.locals.auth as IJwt;
+
+		const campaign = await CampaignService.id(campaignId);
+		if (!campaign) {
+			throw new NotFound("campaign");
+		}
+
+		const isMember = await MembershipService.isMember(campaign.projectId, userId);
+		if (!isMember) {
+			throw new NotAllowed();
+		}
+
+		const result = await CampaignService.getPaginatedEmails(campaignId, page, limit, search);
+
+		return res.status(200).json(result);
 	}
 
 	@Post("send")
