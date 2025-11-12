@@ -40,3 +40,7 @@ export const AWS_REGION = validateEnv("AWS_REGION");
 export const AWS_ACCESS_KEY_ID = validateEnv("AWS_ACCESS_KEY_ID");
 export const AWS_SECRET_ACCESS_KEY = validateEnv("AWS_SECRET_ACCESS_KEY");
 export const AWS_SES_CONFIGURATION_SET = validateEnv("AWS_SES_CONFIGURATION_SET");
+
+// SES Rate Limits
+export const MAX_EMAILS_PER_SECOND = parseInt(validateEnv("MAX_EMAILS_PER_SECOND"));
+export const MAX_EMAILS_PER_DAY = parseInt(validateEnv("MAX_EMAILS_PER_DAY"));

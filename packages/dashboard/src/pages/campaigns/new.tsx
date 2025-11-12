@@ -4,17 +4,17 @@ import type { Campaign } from "@prisma/client";
 import { Ring } from "@uiball/loaders";
 import dayjs from "dayjs";
 import { AnimatePresence, motion } from "framer-motion";
-import { Eye, Search, Users2, XIcon } from "lucide-react";
+import { Eye, Search, XIcon } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/router";
-import React, { useEffect, useState, useCallback } from "react";
+import React, { useEffect, useState } from "react";
 import { type FieldError, useForm } from "react-hook-form";
 import { toast } from "sonner";
 import { Alert, Card, Dropdown, Editor, FullscreenLoader, Input, MultiselectDropdown, Table } from "../../components";
 import { Dashboard } from "../../layouts";
 import { ITEMS_PER_PAGE } from "../../lib/constants";
-import { useCampaigns } from "../../lib/hooks/campaigns";
-import { useContacts, usePaginatedContacts, useContactsCount } from "../../lib/hooks/contacts";
+import { useCampaigns, useSendingRate } from "../../lib/hooks/campaigns";
+import { usePaginatedContacts, useContactsCount } from "../../lib/hooks/contacts";
 import { useEventsWithoutTriggers } from "../../lib/hooks/events";
 import { useActiveProject } from "../../lib/hooks/projects";
 import { useDebounce } from "../../lib/hooks/useDebounce";
@@ -46,6 +46,7 @@ export default function Index() {
 	const { mutate } = useCampaigns();
 	const { data: contactsCount } = useContactsCount();
 	const { data: events } = useEventsWithoutTriggers();
+	const { data: sendingRate } = useSendingRate();
 
 	// Contact selection state
 	const [contactPage, setContactPage] = useState(1);
@@ -625,11 +626,14 @@ export default function Index() {
 									className={"relative z-10 sm:col-span-6"}
 								>
 									<Alert type={"info"} title={"Automatic batching"}>
-										Your campaign will be sent out in batches of 100 recipients each. It will be delivered to all
-										contacts{" "}
+										Your campaign will be sent at a rate of {sendingRate?.emailsPerMinute || 20} emails per minute. It
+										will be delivered to all contacts{" "}
 										{dayjs().to(
 											dayjs().add(
-												Math.ceil((isSelectingAll ? contactsCount || 0 : selectedContactIds.length) / 100),
+												Math.ceil(
+													(isSelectingAll ? contactsCount || 0 : selectedContactIds.length) /
+														(sendingRate?.emailsPerMinute || 20),
+												),
 												"minutes",
 											),
 										)}

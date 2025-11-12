@@ -79,6 +79,31 @@ export class Campaigns {
 		return res.status(200).json(result);
 	}
 
+	@Get(":id/stats")
+	@Middleware([isAuthenticated])
+	public async getCampaignStats(req: Request, res: Response) {
+		const { id: campaignId } = UtilitySchemas.id.parse(req.params);
+
+		const { userId } = res.locals.auth as IJwt;
+
+		const campaign = await CampaignService.id(campaignId);
+		if (!campaign) {
+			throw new NotFound("campaign");
+		}
+
+		const isMember = await MembershipService.isMember(campaign.projectId, userId);
+		if (!isMember) {
+			throw new NotAllowed();
+		}
+
+		const stats = await CampaignService.getStats(campaignId);
+		if (!stats) {
+			throw new NotFound("campaign");
+		}
+
+		return res.status(200).json(stats);
+	}
+
 	@Post("send")
 	@Middleware([isValidSecretKey])
 	public async sendCampaign(req: Request, res: Response) {

@@ -6,6 +6,8 @@ import { ContactService } from "../services/ContactService";
 import { EmailService } from "../services/EmailService";
 import { ProjectService } from "../services/ProjectService";
 import { type Task, type Action, type Campaign, type Contact, type Template, type Event, TaskStatus } from "@prisma/client";
+import { MAX_EMAILS_PER_SECOND, MAX_EMAILS_PER_DAY } from "../app/constants";
+import { redis } from "../services/redis";
 
 type TaskWithRelations = Task & {
 	action: (Action & { template: Template; notevents: Event[] }) | null;
@@ -15,16 +17,92 @@ type TaskWithRelations = Task & {
 
 @Controller("tasks")
 export class Tasks {
+	private static getDailyKey(): string {
+		const today = new Date().toISOString().split("T")[0];
+		return `email:rate:daily:${today}`;
+	}
+
+	private static getRecentKey(): string {
+		return "email:rate:recent";
+	}
+
+	private static async getDailyCount(): Promise<number> {
+		const key = Tasks.getDailyKey();
+		const count = await redis.get(key);
+		return count ? parseInt(count, 10) : 0;
+	}
+
+	private static async getRecentCount(): Promise<number> {
+		const key = Tasks.getRecentKey();
+		const oneSecondAgo = Date.now() - 1000;
+		const count = await redis.zcount(key, oneSecondAgo, Date.now());
+		return count;
+	}
+
+	private static async canSendEmail(): Promise<boolean> {
+		const dailyCount = await Tasks.getDailyCount();
+		const recentCount = await Tasks.getRecentCount();
+
+		if (dailyCount >= MAX_EMAILS_PER_DAY) {
+			return false;
+		}
+
+		if (recentCount >= MAX_EMAILS_PER_SECOND) {
+			return false;
+		}
+
+		return true;
+	}
+
+	private static async recordEmailSent(): Promise<void> {
+		const now = Date.now();
+		const recentKey = Tasks.getRecentKey();
+		const dailyKey = Tasks.getDailyKey();
+
+		await redis.zadd(recentKey, now, now.toString());
+		await redis.expire(recentKey, 2);
+
+		const dailyCount = await redis.incr(dailyKey);
+		if (dailyCount === 1) {
+			const tomorrow = new Date();
+			tomorrow.setDate(tomorrow.getDate() + 1);
+			tomorrow.setHours(0, 0, 0, 0);
+			const secondsUntilMidnight = Math.floor((tomorrow.getTime() - Date.now()) / 1000);
+			await redis.expire(dailyKey, secondsUntilMidnight);
+		}
+
+		const oneSecondAgo = now - 1000;
+		await redis.zremrangebyscore(recentKey, 0, oneSecondAgo);
+	}
+
 	@Post()
 	public async handleTasks(req: Request, res: Response) {
 		const BATCH_SIZE = parseInt(process.env.EMAIL_BATCH_SIZE || "20");
 		const MAX_PARALLEL = parseInt(process.env.MAX_PARALLEL_EMAILS || "5");
 
-		// Get tasks in batches to avoid memory issues
+		const canSend = await Tasks.canSendEmail();
+		if (!canSend) {
+			const dailyCount = await Tasks.getDailyCount();
+			const recentCount = await Tasks.getRecentCount();
+			signale.warn(
+				`Rate limit reached. Daily: ${dailyCount}/${MAX_EMAILS_PER_DAY}, Per second: ${recentCount}/${MAX_EMAILS_PER_SECOND}`,
+			);
+			return res.status(200).json({ success: true, processed: 0, rateLimited: true });
+		}
+
+		const dailyCount = await Tasks.getDailyCount();
+		const recentCount = await Tasks.getRecentCount();
+
+		const availableSlots = Math.min(BATCH_SIZE, MAX_EMAILS_PER_SECOND - recentCount, MAX_EMAILS_PER_DAY - dailyCount);
+
+		if (availableSlots <= 0) {
+			return res.status(200).json({ success: true, processed: 0, rateLimited: true });
+		}
+
 		const tasks = await prisma.task.findMany({
 			where: { runBy: { lte: new Date() }, status: TaskStatus.PENDING },
 			orderBy: { runBy: "asc" },
-			take: BATCH_SIZE,
+			take: availableSlots,
 			include: {
 				action: { include: { template: true, notevents: true } },
 				campaign: true,
@@ -36,7 +114,6 @@ export class Tasks {
 			return res.status(200).json({ success: true, processed: 0 });
 		}
 
-		// Process tasks in parallel batches
 		const processPromises: Promise<void>[] = [];
 
 		for (let i = 0; i < tasks.length; i += MAX_PARALLEL) {
@@ -92,7 +169,6 @@ export class Tasks {
 
 		const project = await ProjectService.id(contact.projectId);
 
-		// If the project does not exist, delete related tasks
 		if (!project) {
 			await prisma.task.deleteMany({
 				where: {
@@ -169,6 +245,8 @@ export class Tasks {
 				}),
 			},
 		});
+
+		await Tasks.recordEmailSent();
 
 		const emailData: {
 			messageId: string;

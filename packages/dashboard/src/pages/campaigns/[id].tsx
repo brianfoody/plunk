@@ -13,7 +13,7 @@ import { toast } from "sonner";
 import { Alert, Badge, Card, Dropdown, Editor, FullscreenLoader, Input, Modal, MultiselectDropdown, Table } from "../../components";
 import { Dashboard } from "../../layouts";
 import { ITEMS_PER_PAGE } from "../../lib/constants";
-import { useCampaign, useCampaigns, usePaginatedCampaignEmails } from "../../lib/hooks/campaigns";
+import { useCampaign, useCampaigns, usePaginatedCampaignEmails, useCampaignStats } from "../../lib/hooks/campaigns";
 import { useContacts, usePaginatedContacts, useContactsCount } from "../../lib/hooks/contacts";
 import { useEventsWithoutTriggers } from "../../lib/hooks/events";
 import { useActiveProject } from "../../lib/hooks/projects";
@@ -44,6 +44,7 @@ export default function Index() {
 	const { data: campaign, mutate: campaignMutate } = useCampaign(router.query.id as string);
 	const { data: contactsCount } = useContactsCount();
 	const { data: events } = useEventsWithoutTriggers();
+	const { data: campaignStats } = useCampaignStats(router.query.id as string);
 
 	// Contact selection state
 	const [contactPage, setContactPage] = useState(1);
@@ -877,13 +878,60 @@ export default function Index() {
 										className={"relative z-10 sm:col-span-6"}
 									>
 										<Alert type={"info"} title={"Automatic batching"}>
-											Your campaign will be sent out in batches of 100 recipients each. It will be delivered to all
-											contacts{" "}
-											{dayjs().to(
-												dayjs().add(
-													Math.ceil((isSelectingAll ? contactsCount || 0 : selectedContactIds.length) / 100),
-													"minutes",
-												),
+											{campaignStats ? (
+												<>
+													Your campaign will be sent at a rate of {campaignStats.emailsPerMinute} emails per
+													minute.
+													{campaignStats.pendingTasks > 0 || campaignStats.processingTasks > 0 ? (
+														<>
+															{" "}
+															Currently{" "}
+															{campaignStats.processingTasks > 0
+																? `processing ${campaignStats.processingTasks} tasks`
+																: ""}
+															{campaignStats.processingTasks > 0 && campaignStats.pendingTasks > 0
+																? " and "
+																: ""}
+															{campaignStats.pendingTasks > 0 ? `${campaignStats.pendingTasks} pending` : ""}.{" "}
+															Estimated completion:{" "}
+															{dayjs().to(
+																dayjs().add(
+																	Math.ceil(
+																		(campaignStats.pendingTasks + campaignStats.processingTasks) /
+																			campaignStats.emailsPerMinute,
+																	),
+																	"minutes",
+																),
+															)}
+														</>
+													) : (
+														<>
+															{" "}
+															It will be delivered to all contacts{" "}
+															{dayjs().to(
+																dayjs().add(
+																	Math.ceil(
+																		(isSelectingAll ? contactsCount || 0 : selectedContactIds.length) /
+																			campaignStats.emailsPerMinute,
+																	),
+																	"minutes",
+																),
+															)}
+														</>
+													)}
+												</>
+											) : (
+												<>
+													Your campaign will be sent out in batches. It will be delivered to all contacts{" "}
+													{dayjs().to(
+														dayjs().add(
+															Math.ceil(
+																(isSelectingAll ? contactsCount || 0 : selectedContactIds.length) / 20,
+															),
+															"minutes",
+														),
+													)}
+												</>
 											)}
 										</Alert>
 									</motion.div>

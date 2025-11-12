@@ -62,3 +62,31 @@ export function useCampaigns() {
 		})[]
 	>(activeProject ? `/projects/id/${activeProject.id}/campaigns` : null);
 }
+
+/**
+ * Hook for campaign statistics
+ * @param campaignId
+ */
+export function useCampaignStats(campaignId: string) {
+	return useSWR<{
+		totalRecipients: number;
+		pendingTasks: number;
+		processingTasks: number;
+		completedTasks: number;
+		failedTasks: number;
+		emailsPerMinute: number;
+	}>(campaignId ? `/v1/campaigns/${campaignId}/stats` : null, {
+		revalidateOnFocus: true,
+		refreshInterval: 5000,
+	});
+}
+
+/**
+ * Hook for sending rate configuration
+ */
+export function useSendingRate() {
+	return useSWR<{ emailsPerMinute: number }>("/health/config", {
+		revalidateOnFocus: false,
+		refreshInterval: 0,
+	});
+}
