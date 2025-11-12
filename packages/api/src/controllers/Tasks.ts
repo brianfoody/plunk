@@ -4,15 +4,26 @@ import signale from "signale";
 import { prisma } from "../database/prisma";
 import { ContactService } from "../services/ContactService";
 import { EmailService } from "../services/EmailService";
-import { ProjectService } from "../services/ProjectService";
-import { type Task, type Action, type Campaign, type Contact, type Template, type Event, TaskStatus, CampaignStatus } from "@prisma/client";
+import {
+	type Task,
+	type Action,
+	type Campaign,
+	type Contact,
+	type Template,
+	type Event,
+	type Project,
+	TaskStatus,
+	CampaignStatus,
+} from "@prisma/client";
 import { MAX_EMAILS_PER_SECOND, MAX_EMAILS_PER_MINUTE } from "../app/constants";
 import { redis } from "../services/redis";
 
 type TaskWithRelations = Task & {
 	action: (Action & { template: Template; notevents: Event[] }) | null;
 	campaign: Campaign | null;
-	contact: Contact;
+	contact: Contact & {
+		project: Project;
+	};
 };
 
 @Controller("tasks")
@@ -57,9 +68,6 @@ export class Tasks {
 
 	private static async canSendEmail(): Promise<boolean> {
 		try {
-			const minuteKey = Tasks.getMinuteKey();
-			const secondKey = Tasks.getSecondKey();
-
 			// Check minute limit
 			const minuteCount = await Tasks.getCurrentMinuteCount();
 			if (minuteCount >= Tasks.EMAILS_PER_MINUTE) {
@@ -72,7 +80,18 @@ export class Tasks {
 				return false;
 			}
 
-			// Increment both counters
+			return true;
+		} catch (error) {
+			signale.error("Failed to check rate limits:", error);
+			return false;
+		}
+	}
+
+	private static async incrementEmailCounters(): Promise<void> {
+		try {
+			const minuteKey = Tasks.getMinuteKey();
+			const secondKey = Tasks.getSecondKey();
+
 			const pipeline = redis.pipeline();
 			pipeline.incr(minuteKey);
 			pipeline.expire(minuteKey, 3600); // Expire after 1 hour
@@ -80,11 +99,8 @@ export class Tasks {
 			pipeline.expire(secondKey, 2); // Expire after 2 seconds
 
 			await pipeline.exec();
-
-			return true;
 		} catch (error) {
-			signale.error("Failed to check rate limits:", error);
-			return false;
+			signale.error("Failed to increment email counters:", error);
 		}
 	}
 
@@ -98,7 +114,11 @@ export class Tasks {
 			include: {
 				action: { include: { template: true, notevents: true } },
 				campaign: true,
-				contact: true,
+				contact: {
+					include: {
+						project: true,
+					},
+				},
 			},
 			take: MAX_EMAILS_PER_MINUTE,
 		});
@@ -185,28 +205,38 @@ export class Tasks {
 
 	private async processSingleTask(task: TaskWithRelations): Promise<boolean> {
 		try {
-			await prisma.task.update({
-				where: { id: task.id },
-				data: { status: TaskStatus.PROCESSING },
+			const emailData = await this.processTask(task);
+
+			if (!emailData) {
+				await prisma.task.update({
+					where: { id: task.id },
+					data: { status: TaskStatus.COMPLETED },
+				});
+				return false;
+			}
+
+			await prisma.$transaction(async (tx) => {
+				await tx.email.create({ data: emailData });
+				await tx.task.update({
+					where: { id: task.id },
+					data: { status: TaskStatus.COMPLETED },
+				});
 			});
 
-			await this.processTask(task);
-
-			await prisma.task.update({
-				where: { id: task.id },
-				data: { status: TaskStatus.COMPLETED },
-			});
 			signale.success(`Email sent to ${task.contact.email}`);
 			return true;
 		} catch (error) {
 			signale.error(`Failed to process task ${task.id}:`, error);
-			// TODO: Implement retry/backoff if necessary
-			await prisma.task.update({
-				where: { id: task.id },
-				data: {
-					status: TaskStatus.FAILED,
-				},
-			});
+			try {
+				await prisma.task.update({
+					where: { id: task.id },
+					data: {
+						status: TaskStatus.FAILED,
+					},
+				});
+			} catch (updateError) {
+				signale.error(`Failed to update task ${task.id} to FAILED status:`, updateError);
+			}
 			return false;
 		}
 	}
@@ -244,10 +274,15 @@ export class Tasks {
 		}
 	}
 
-	private async processTask(task: TaskWithRelations): Promise<void> {
+	private async processTask(task: TaskWithRelations): Promise<{
+		messageId: string;
+		contactId: string;
+		actionId?: string;
+		campaignId?: string;
+	} | null> {
 		const { action, campaign, contact } = task;
 
-		const project = await ProjectService.id(contact.projectId);
+		const project = contact.project;
 
 		if (!project) {
 			await prisma.task.updateMany({
@@ -268,7 +303,7 @@ export class Tasks {
 					},
 				},
 			});
-			return;
+			return null;
 		}
 
 		let subject = "";
@@ -282,7 +317,7 @@ export class Tasks {
 			if (notevents.length > 0) {
 				const triggers = await ContactService.triggers(contact.id);
 				if (notevents.some((e) => triggers.some((t) => t.contactId === contact.id && t.eventId === e.id))) {
-					return;
+					return null;
 				}
 			}
 
@@ -337,6 +372,8 @@ export class Tasks {
 			},
 		});
 
+		await Tasks.incrementEmailCounters();
+
 		const emailData: {
 			messageId: string;
 			contactId: string;
@@ -353,6 +390,6 @@ export class Tasks {
 			emailData.campaignId = campaign.id;
 		}
 
-		await prisma.email.create({ data: emailData });
+		return emailData;
 	}
 }
