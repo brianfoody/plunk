@@ -10,22 +10,90 @@ export class CampaignService {
 			return prisma.campaign.findUnique({
 				where: { id },
 				include: {
-					recipients: { select: { id: true } },
-					emails: { select: { id: true, status: true, contact: { select: { id: true, email: true } } } },
+					_count: {
+						select: {
+							campaignRecipients: true,
+							emails: true,
+						},
+					},
 				},
 			});
 		});
 	}
 
-	public static async getPaginatedEmails(campaignId: string, page: number = 1, limit: number = DEFAULT_PAGINATION_LIMIT, search?: string) {
-		const where: any = {
-			campaignId,
-			...(search && {
-				contact: {
+	public static idWithRecipients(id: string) {
+		return wrapRedis(Keys.Campaign.id(id), async () => {
+			return prisma.campaign.findUnique({
+				where: { id },
+				include: {
+					_count: {
+						select: {
+							campaignRecipients: true,
+							emails: true,
+						},
+					},
+					campaignRecipients: { select: { contactId: true } },
+				},
+			});
+		});
+	}
+
+	public static async getPaginatedEmails(
+		campaignId: string,
+		page: number = 1,
+		limit: number = DEFAULT_PAGINATION_LIMIT,
+		search?: string,
+	) {
+		if (search) {
+			const matchingContactIds = await prisma.contact.findMany({
+				where: {
 					OR: [{ email: { contains: search, mode: "insensitive" } }, { data: { contains: search, mode: "insensitive" } }],
 				},
-			}),
-		};
+				select: { id: true },
+			});
+
+			const contactIds = matchingContactIds.map((c) => c.id);
+
+			if (contactIds.length === 0) {
+				return {
+					emails: [],
+					total: 0,
+					page,
+					limit,
+					totalPages: 0,
+				};
+			}
+
+			const where = {
+				campaignId,
+				contactId: { in: contactIds },
+			};
+
+			const [emails, total] = await Promise.all([
+				prisma.email.findMany({
+					where,
+					select: {
+						id: true,
+						status: true,
+						contact: { select: { id: true, email: true } },
+					},
+					orderBy: [{ createdAt: "desc" }],
+					take: limit,
+					skip: (page - 1) * limit,
+				}),
+				prisma.email.count({ where }),
+			]);
+
+			return {
+				emails,
+				total,
+				page,
+				limit,
+				totalPages: Math.ceil(total / limit),
+			};
+		}
+
+		const where = { campaignId };
 
 		const [emails, total] = await Promise.all([
 			prisma.email.findMany({
@@ -55,7 +123,11 @@ export class CampaignService {
 		const campaign = await prisma.campaign.findUnique({
 			where: { id: campaignId },
 			select: {
-				recipients: { select: { id: true } },
+				_count: {
+					select: {
+						campaignRecipients: true,
+					},
+				},
 			},
 		});
 
@@ -82,7 +154,7 @@ export class CampaignService {
 		const emailsPerMinute = EMAIL_BATCH_SIZE;
 
 		return {
-			totalRecipients: campaign.recipients.length,
+			totalRecipients: campaign._count.campaignRecipients,
 			pendingTasks: pendingCount,
 			processingTasks: processingCount,
 			completedTasks: completedCount,

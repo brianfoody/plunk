@@ -22,7 +22,8 @@
 		"ts-node": "^10.9.2"
 	},
 	"dependencies": {
-		"@prisma/client": "^5.17.0"
+		"@prisma/client": "^5.17.0",
+		"bcrypt": "^5.1.1"
 	},
 	"scripts": {
 		"dev:api": "yarn workspace @plunk/api dev",

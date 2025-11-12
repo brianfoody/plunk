@@ -53,12 +53,10 @@ export function useCampaigns() {
 				id: string;
 				status: string;
 			}[];
-			tasks: {
-				id: string;
-			}[];
-			recipients: {
-				id: string;
-			}[];
+			_count: {
+				campaignRecipients: number;
+				tasks: number;
+			};
 		})[]
 	>(activeProject ? `/projects/id/${activeProject.id}/campaigns` : null);
 }

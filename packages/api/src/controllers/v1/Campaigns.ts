@@ -43,11 +43,7 @@ export class Campaigns {
 	@Middleware([isAuthenticated])
 	public async getCampaignEmailsPaginated(req: Request, res: Response) {
 		const { id: campaignId } = UtilitySchemas.id.parse(req.params);
-		const {
-			page,
-			limit,
-			search,
-		} = z
+		const { page, limit, search } = z
 			.object({
 				page: z
 					.string()
@@ -65,7 +61,11 @@ export class Campaigns {
 
 		const { userId } = res.locals.auth as IJwt;
 
-		const campaign = await CampaignService.id(campaignId);
+		const campaign = await prisma.campaign.findUnique({
+			where: { id: campaignId },
+			select: { projectId: true },
+		});
+
 		if (!campaign) {
 			throw new NotFound("campaign");
 		}
@@ -87,7 +87,11 @@ export class Campaigns {
 
 		const { userId } = res.locals.auth as IJwt;
 
-		const campaign = await CampaignService.id(campaignId);
+		const campaign = await prisma.campaign.findUnique({
+			where: { id: campaignId },
+			select: { projectId: true },
+		});
+
 		if (!campaign) {
 			throw new NotFound("campaign");
 		}
@@ -118,14 +122,15 @@ export class Campaigns {
 
 		const { id, live, delay: userDelay } = CampaignSchemas.send.parse(req.body);
 
-		const campaign = await CampaignService.id(id);
+		const campaign = await CampaignService.idWithRecipients(id);
 
 		if (!campaign || campaign.projectId !== project.id) {
 			throw new NotFound("campaign");
 		}
 
 		if (live) {
-			if (campaign.recipients.length === 0) {
+			const recipientCount = campaign.campaignRecipients.length;
+			if (recipientCount === 0) {
 				throw new HttpException(400, "No recipients found");
 			}
 
@@ -158,14 +163,21 @@ export class Campaigns {
 			let delay = userDelay ?? 0;
 			const batchSize = parseInt(process.env.CAMPAIGN_BATCH_SIZE || "100");
 
-			const tasks = campaign.recipients.map((r, index) => {
+			const recipientIds = await prisma.campaignRecipient
+				.findMany({
+					where: { campaignId: campaign.id },
+					select: { contactId: true },
+				})
+				.then((recipients) => recipients.map((r) => r.contactId));
+
+			const tasks = recipientIds.map((contactId: string, index: number) => {
 				if (index % batchSize === 0) {
 					delay += 1;
 				}
 
 				return {
 					campaignId: campaign.id,
-					contactId: r.id,
+					contactId,
 					runBy: dayjs().add(delay, "minutes").toDate(),
 				};
 			});
@@ -307,13 +319,12 @@ export class Campaigns {
 				}),
 			);
 
-			await prisma.campaign.update({
-				where: { id: campaign.id },
-				data: {
-					recipients: {
-						connect: recipientIds.map((id) => ({ id })),
-					},
-				},
+			await prisma.campaignRecipient.createMany({
+				data: recipientIds.map((contactId) => ({
+					campaignId: campaign.id,
+					contactId,
+				})),
+				skipDuplicates: true,
 			});
 		}
 
@@ -353,13 +364,13 @@ export class Campaigns {
 			recipients = projectContacts.map((c) => c.id);
 		}
 
-		let campaign = await CampaignService.id(id);
+		const existingCampaign = await CampaignService.id(id);
 
-		if (!campaign || campaign.projectId !== project.id) {
+		if (!existingCampaign || existingCampaign.projectId !== project.id) {
 			throw new NotFound("campaign");
 		}
 
-		campaign = await prisma.campaign.update({
+		const campaign = await prisma.campaign.update({
 			where: { id },
 			data: {
 				subject,
@@ -369,7 +380,7 @@ export class Campaigns {
 				email: email === "" ? null : email,
 			},
 			include: {
-				recipients: { select: { id: true } },
+				campaignRecipients: { select: { contact: { select: { id: true } } } },
 				emails: {
 					select: {
 						id: true,
@@ -380,22 +391,11 @@ export class Campaigns {
 			},
 		});
 
-		await prisma.campaign.update({
-			where: { id },
-			data: {
-				recipients: {
-					set: [],
-				},
-			},
+		await prisma.campaignRecipient.deleteMany({
+			where: { campaignId: campaign.id },
 		});
 
 		const chunkSize = 500;
-
-		for (let i = 0; i < campaign.recipients.length; i += chunkSize) {
-			const chunk = campaign.recipients.slice(i, i + chunkSize);
-
-			await prisma.$executeRaw`DELETE FROM "_CampaignToContact" WHERE "A" = ${campaign.id} AND "B" = ANY(${chunk.map((c) => c.id)})`;
-		}
 
 		for (let i = 0; i < recipients.length; i += chunkSize) {
 			const chunk = recipients.slice(i, i + chunkSize);
@@ -422,13 +422,12 @@ export class Campaigns {
 				}),
 			);
 
-			await prisma.campaign.update({
-				where: { id: campaign.id },
-				data: {
-					recipients: {
-						connect: recipientIds.map((id) => ({ id })),
-					},
-				},
+			await prisma.campaignRecipient.createMany({
+				data: recipientIds.map((contactId) => ({
+					campaignId: campaign.id,
+					contactId,
+				})),
+				skipDuplicates: true,
 			});
 		}
 

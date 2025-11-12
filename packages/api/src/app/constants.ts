@@ -36,14 +36,24 @@ if (!APP_URI.startsWith("http")) {
 }
 
 // AWS
-export const AWS_REGION = validateEnv("AWS_REGION");
-export const AWS_ACCESS_KEY_ID = validateEnv("AWS_ACCESS_KEY_ID");
-export const AWS_SECRET_ACCESS_KEY = validateEnv("AWS_SECRET_ACCESS_KEY");
-export const AWS_SES_CONFIGURATION_SET = validateEnv("AWS_SES_CONFIGURATION_SET");
+export const AWS_REGION = NODE_ENV === "development" ? validateEnv("AWS_REGION", "" as string) : validateEnv("AWS_REGION");
+export const AWS_ACCESS_KEY_ID =
+	NODE_ENV === "development" ? validateEnv("AWS_ACCESS_KEY_ID", "" as string) : validateEnv("AWS_ACCESS_KEY_ID");
+export const AWS_SECRET_ACCESS_KEY =
+	NODE_ENV === "development" ? validateEnv("AWS_SECRET_ACCESS_KEY", "" as string) : validateEnv("AWS_SECRET_ACCESS_KEY");
+export const AWS_SES_CONFIGURATION_SET =
+	NODE_ENV === "development" ? validateEnv("AWS_SES_CONFIGURATION_SET", "" as string) : validateEnv("AWS_SES_CONFIGURATION_SET");
+
+export const IS_SES_CONFIGURED =
+	NODE_ENV !== "development" || (!!AWS_REGION && !!AWS_ACCESS_KEY_ID && !!AWS_SECRET_ACCESS_KEY && !!AWS_SES_CONFIGURATION_SET);
 
 // SES Rate Limits
 export const MAX_EMAILS_PER_SECOND = parseInt(validateEnv("MAX_EMAILS_PER_SECOND"));
 export const MAX_EMAILS_PER_DAY = parseInt(validateEnv("MAX_EMAILS_PER_DAY"));
+export const MAX_EMAILS_PER_MINUTE = Math.floor(MAX_EMAILS_PER_DAY / (24 * 60));
 
 // Pagination
 export const DEFAULT_PAGINATION_LIMIT = parseInt(validateEnv("PAGINATION_LIMIT", "100"));
+
+// Batch sizes
+export const TASK_CREATE_BATCH_SIZE = parseInt(validateEnv("TASK_CREATE_BATCH_SIZE", "1000"));

@@ -1,6 +1,6 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { CampaignSchemas, type UtilitySchemas } from "@plunk/shared";
-import type { Campaign, Template } from "@prisma/client";
+import type { Campaign, CampaignRecipient, Template } from "@prisma/client";
 import { Ring } from "@uiball/loaders";
 import dayjs from "dayjs";
 import { AnimatePresence, motion } from "framer-motion";
@@ -126,7 +126,7 @@ export default function Index() {
 
 		reset({
 			...campaign,
-			recipients: campaign.recipients.map((r: { id: string }) => r.id),
+			recipients: campaign.campaignRecipients?.map((r: CampaignRecipient) => r.contactId) ?? [],
 		});
 	}, [reset, campaign]);
 

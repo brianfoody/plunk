@@ -245,14 +245,6 @@ export default function Table<T extends Record<string, TableRowValue> = Record<s
 		);
 	}
 
-	if (values.length === 0) {
-		return (
-			<div className="border rounded-md p-4 text-center text-gray-500">
-				<div className="text-sm">No data found</div>
-			</div>
-		);
-	}
-
 	// Render the table content
 	const renderTableContent = () => (
 		<div className="flex flex-col">
@@ -267,128 +259,149 @@ export default function Table<T extends Record<string, TableRowValue> = Record<s
 											{/* Checkbox header */}
 										</th>
 									)}
-									{Object.keys(values[0]).map((header) => {
-										return (
-											<th
-												key={header}
-												scope="col"
-												className={`${
-													typeof values[0][header] === "boolean" ? "text-center" : "text-left"
-												} px-6 py-3 text-xs font-medium text-neutral-800`}
-											>
-												{header}
-											</th>
-										);
-									})}
+									{values.length > 0 &&
+										Object.keys(values[0]).map((header) => {
+											return (
+												<th
+													key={header}
+													scope="col"
+													className={`${
+														typeof values[0][header] === "boolean" ? "text-center" : "text-left"
+													} px-6 py-3 text-xs font-medium text-neutral-800`}
+												>
+													{header}
+												</th>
+											);
+										})}
 								</tr>
 							</thead>
 							<tbody>
-								{values.map((row, index) => {
-									const itemIdentifier = getItemIdentifier ? getItemIdentifier(row) : `item ${index + 1}`;
-									return (
-										<tr
-											key={index}
-											className={`border-t border-neutral-100 bg-white transition ease-in-out hover:bg-neutral-50 ${
-												selectable ? "cursor-pointer" : ""
-											}`}
-											onClick={selectable && onRowClick ? () => onRowClick(row, index) : undefined}
+								{values.length === 0 ? (
+									<tr className="border-t border-neutral-100 bg-white">
+										<td
+											colSpan={
+												selectable
+													? Object.keys(values[0] || {}).length + 1
+													: Object.keys(values[0] || {}).length || 1
+											}
+											className="px-6 py-8 text-center text-sm text-neutral-500"
 										>
-											{selectable && (
-												<td className="whitespace-nowrap px-6 py-4 text-sm text-neutral-500">
-													{renderSelectableRow ? (
-														renderSelectableRow(row, index)
-													) : (
-														<input
-															type="checkbox"
-															className="rounded border-neutral-300 text-neutral-800 focus:ring-neutral-800"
-															aria-label={`Select ${itemIdentifier}`}
-														/>
-													)}
-												</td>
-											)}
-											{Object.entries(row).map((value, valueIndex) => {
-												if (value[1] === null || value[1] === undefined) {
-													return (
-														<td
-															key={valueIndex}
-															className="whitespace-nowrap px-6 py-4 text-sm text-neutral-500"
-														>
-															Not specified
-														</td>
-													);
-												}
-
-												if (typeof value[1] === "boolean") {
-													return (
-														<td
-															key={valueIndex}
-															className="whitespace-nowrap px-6 py-4 text-sm text-neutral-500"
-														>
-															{value[1] ? (
-																<svg
-																	className={
-																		"mx-auto h-7 w-7 rounded-full bg-green-50 p-1 text-green-500"
-																	}
-																	fill="none"
-																	viewBox="0 0 24 24"
-																>
-																	<path
-																		stroke="currentColor"
-																		strokeLinecap="round"
-																		strokeLinejoin="round"
-																		strokeWidth="1.5"
-																		d="M5.75 12.8665L8.33995 16.4138C9.15171 17.5256 10.8179 17.504 11.6006 16.3715L18.25 6.75"
-																	/>
-																</svg>
-															) : (
-																<svg
-																	className={"mx-auto h-7 w-7 rounded-full bg-red-50 p-1 text-red-500"}
-																	width="24"
-																	height="24"
-																	fill="none"
-																	viewBox="0 0 24 24"
-																>
-																	<path
-																		stroke="currentColor"
-																		strokeLinecap="round"
-																		strokeLinejoin="round"
-																		strokeWidth="1.5"
-																		d="M17.25 6.75L6.75 17.25"
-																	/>
-																	<path
-																		stroke="currentColor"
-																		strokeLinecap="round"
-																		strokeLinejoin="round"
-																		strokeWidth="1.5"
-																		d="M6.75 6.75L17.25 17.25"
-																	/>
-																</svg>
-															)}
-														</td>
-													);
-												}
-
-												// Handle Date objects
-												if (value[1] instanceof Date) {
-													return (
-														<td
-															key={valueIndex}
-															className="whitespace-nowrap px-6 py-4 text-sm text-neutral-500"
-														>
-															{value[1].toLocaleDateString()}
-														</td>
-													);
-												}
-
-												return (
-													<td key={valueIndex} className="whitespace-nowrap px-6 py-4 text-sm text-neutral-500">
-														{value[1] as React.ReactNode}
+											No data found
+										</td>
+									</tr>
+								) : (
+									values.map((row, index) => {
+										const itemIdentifier = getItemIdentifier ? getItemIdentifier(row) : `item ${index + 1}`;
+										return (
+											<tr
+												key={index}
+												className={`border-t border-neutral-100 bg-white transition ease-in-out hover:bg-neutral-50 ${
+													selectable ? "cursor-pointer" : ""
+												}`}
+												onClick={selectable && onRowClick ? () => onRowClick(row, index) : undefined}
+											>
+												{selectable && (
+													<td className="whitespace-nowrap px-6 py-4 text-sm text-neutral-500">
+														{renderSelectableRow ? (
+															renderSelectableRow(row, index)
+														) : (
+															<input
+																type="checkbox"
+																className="rounded border-neutral-300 text-neutral-800 focus:ring-neutral-800"
+																aria-label={`Select ${itemIdentifier}`}
+															/>
+														)}
 													</td>
-												);
-											})}
-										</tr>
-									);
-								})}
+												)}
+												{Object.entries(row).map((value, valueIndex) => {
+													if (value[1] === null || value[1] === undefined) {
+														return (
+															<td
+																key={valueIndex}
+																className="whitespace-nowrap px-6 py-4 text-sm text-neutral-500"
+															>
+																Not specified
+															</td>
+														);
+													}
+
+													if (typeof value[1] === "boolean") {
+														return (
+															<td
+																key={valueIndex}
+																className="whitespace-nowrap px-6 py-4 text-sm text-neutral-500"
+															>
+																{value[1] ? (
+																	<svg
+																		className={
+																			"mx-auto h-7 w-7 rounded-full bg-green-50 p-1 text-green-500"
+																		}
+																		fill="none"
+																		viewBox="0 0 24 24"
+																	>
+																		<path
+																			stroke="currentColor"
+																			strokeLinecap="round"
+																			strokeLinejoin="round"
+																			strokeWidth="1.5"
+																			d="M5.75 12.8665L8.33995 16.4138C9.15171 17.5256 10.8179 17.504 11.6006 16.3715L18.25 6.75"
+																		/>
+																	</svg>
+																) : (
+																	<svg
+																		className={
+																			"mx-auto h-7 w-7 rounded-full bg-red-50 p-1 text-red-500"
+																		}
+																		width="24"
+																		height="24"
+																		fill="none"
+																		viewBox="0 0 24 24"
+																	>
+																		<path
+																			stroke="currentColor"
+																			strokeLinecap="round"
+																			strokeLinejoin="round"
+																			strokeWidth="1.5"
+																			d="M17.25 6.75L6.75 17.25"
+																		/>
+																		<path
+																			stroke="currentColor"
+																			strokeLinecap="round"
+																			strokeLinejoin="round"
+																			strokeWidth="1.5"
+																			d="M6.75 6.75L17.25 17.25"
+																		/>
+																	</svg>
+																)}
+															</td>
+														);
+													}
+
+													// Handle Date objects
+													if (value[1] instanceof Date) {
+														return (
+															<td
+																key={valueIndex}
+																className="whitespace-nowrap px-6 py-4 text-sm text-neutral-500"
+															>
+																{value[1].toLocaleDateString()}
+															</td>
+														);
+													}
+
+													return (
+														<td
+															key={valueIndex}
+															className="whitespace-nowrap px-6 py-4 text-sm text-neutral-500"
+														>
+															{value[1] as React.ReactNode}
+														</td>
+													);
+												})}
+											</tr>
+										);
+									})
+								)}
 							</tbody>
 						</table>
 					</div>

@@ -5,8 +5,8 @@ import { prisma } from "../database/prisma";
 import { ContactService } from "../services/ContactService";
 import { EmailService } from "../services/EmailService";
 import { ProjectService } from "../services/ProjectService";
-import { type Task, type Action, type Campaign, type Contact, type Template, type Event, TaskStatus } from "@prisma/client";
-import { MAX_EMAILS_PER_SECOND, MAX_EMAILS_PER_DAY } from "../app/constants";
+import { type Task, type Action, type Campaign, type Contact, type Template, type Event, TaskStatus, CampaignStatus } from "@prisma/client";
+import { MAX_EMAILS_PER_SECOND, MAX_EMAILS_PER_MINUTE } from "../app/constants";
 import { redis } from "../services/redis";
 
 type TaskWithRelations = Task & {
@@ -17,168 +17,231 @@ type TaskWithRelations = Task & {
 
 @Controller("tasks")
 export class Tasks {
-	private static readonly RATE_LIMIT_SCRIPT = `
-		local recentKey = KEYS[1]
-		local dailyKey = KEYS[2]
-		local now = tonumber(ARGV[1])
-		local maxPerSecond = tonumber(ARGV[2])
-		local maxPerDay = tonumber(ARGV[3])
-		local secondsUntilMidnight = tonumber(ARGV[4])
-		
-		local dailyCount = tonumber(redis.call('GET', dailyKey) or '0')
-		local oneSecondAgo = now - 1000
-		local recentCount = redis.call('ZCOUNT', recentKey, oneSecondAgo, now)
-		
-		if dailyCount >= maxPerDay then
-			return 0
-		end
-		
-		if recentCount >= maxPerSecond then
-			return 0
-		end
-		
-		redis.call('ZADD', recentKey, now, tostring(now))
-		redis.call('EXPIRE', recentKey, 2)
-		
-		local newDailyCount = redis.call('INCR', dailyKey)
-		if newDailyCount == 1 then
-			redis.call('EXPIRE', dailyKey, secondsUntilMidnight)
-		end
-		
-		redis.call('ZREMRANGEBYSCORE', recentKey, 0, oneSecondAgo)
-		
-		return 1
-	`;
+	private static readonly EMAILS_PER_MINUTE = MAX_EMAILS_PER_MINUTE;
+	private static readonly MINUTE_KEY_PREFIX = "email:rate:minute";
+	private static readonly SECOND_KEY_PREFIX = "email:rate:second";
 
-	private static getDailyKey(): string {
-		const today = new Date().toISOString().split("T")[0];
-		return `email:rate:daily:${today}`;
+	private static getMinuteKey(): string {
+		const now = new Date();
+		const minute = now.toISOString().slice(0, 16); // YYYY-MM-DDTHH:MM
+		return `${Tasks.MINUTE_KEY_PREFIX}:${minute}`;
 	}
 
-	private static getRecentKey(): string {
-		return "email:rate:recent";
+	private static getSecondKey(): string {
+		const now = new Date();
+		const second = now.toISOString().slice(0, 19); // YYYY-MM-DDTHH:MM:SS
+		return `${Tasks.SECOND_KEY_PREFIX}:${second}`;
 	}
 
-	private static async getDailyCount(): Promise<number> {
+	private static async getCurrentMinuteCount(): Promise<number> {
 		try {
-			const key = Tasks.getDailyKey();
+			const key = Tasks.getMinuteKey();
 			const count = await redis.get(key);
 			return count ? parseInt(count, 10) : 0;
 		} catch (error) {
-			signale.error("Failed to get daily count from Redis:", error);
+			signale.error("Failed to get minute count from Redis:", error);
 			return 0;
 		}
 	}
 
-	private static async getRecentCount(): Promise<number> {
+	private static async getCurrentSecondCount(): Promise<number> {
 		try {
-			const key = Tasks.getRecentKey();
-			const oneSecondAgo = Date.now() - 1000;
-			const count = await redis.zcount(key, oneSecondAgo, Date.now());
-			return count;
+			const key = Tasks.getSecondKey();
+			const count = await redis.get(key);
+			return count ? parseInt(count, 10) : 0;
 		} catch (error) {
-			signale.error("Failed to get recent count from Redis:", error);
+			signale.error("Failed to get second count from Redis:", error);
 			return 0;
 		}
 	}
 
-	private static async tryRecordEmailSent(): Promise<boolean> {
+	private static async canSendEmail(): Promise<boolean> {
 		try {
-			const now = Date.now();
-			const recentKey = Tasks.getRecentKey();
-			const dailyKey = Tasks.getDailyKey();
+			const minuteKey = Tasks.getMinuteKey();
+			const secondKey = Tasks.getSecondKey();
 
-			const tomorrow = new Date();
-			tomorrow.setDate(tomorrow.getDate() + 1);
-			tomorrow.setHours(0, 0, 0, 0);
-			const secondsUntilMidnight = Math.floor((tomorrow.getTime() - Date.now()) / 1000);
+			// Check minute limit
+			const minuteCount = await Tasks.getCurrentMinuteCount();
+			if (minuteCount >= Tasks.EMAILS_PER_MINUTE) {
+				return false;
+			}
 
-			const result = await redis.eval(
-				Tasks.RATE_LIMIT_SCRIPT,
-				2,
-				recentKey,
-				dailyKey,
-				now.toString(),
-				MAX_EMAILS_PER_SECOND.toString(),
-				MAX_EMAILS_PER_DAY.toString(),
-				secondsUntilMidnight.toString(),
-			);
+			// Check second limit
+			const secondCount = await Tasks.getCurrentSecondCount();
+			if (secondCount >= MAX_EMAILS_PER_SECOND) {
+				return false;
+			}
 
-			return result === 1;
+			// Increment both counters
+			const pipeline = redis.pipeline();
+			pipeline.incr(minuteKey);
+			pipeline.expire(minuteKey, 3600); // Expire after 1 hour
+			pipeline.incr(secondKey);
+			pipeline.expire(secondKey, 2); // Expire after 2 seconds
+
+			await pipeline.exec();
+
+			return true;
 		} catch (error) {
-			signale.error("Failed to record email sent in Redis:", error);
+			signale.error("Failed to check rate limits:", error);
 			return false;
 		}
 	}
 
 	@Post()
 	public async handleTasks(req: Request, res: Response) {
-		const BATCH_SIZE = parseInt(process.env.EMAIL_BATCH_SIZE || "20");
-		const MAX_PARALLEL = parseInt(process.env.MAX_PARALLEL_EMAILS || "5");
+		const MAX_PER_MINUTE = Tasks.EMAILS_PER_MINUTE;
 
 		const tasks = await prisma.task.findMany({
 			where: { runBy: { lte: new Date() }, status: TaskStatus.PENDING },
 			orderBy: { runBy: "asc" },
-			take: BATCH_SIZE,
 			include: {
 				action: { include: { template: true, notevents: true } },
 				campaign: true,
 				contact: true,
 			},
+			take: MAX_EMAILS_PER_MINUTE,
 		});
 
 		if (tasks.length === 0) {
 			return res.status(200).json({ success: true, processed: 0 });
 		}
 
-		const processPromises: Promise<void>[] = [];
+		let processed = 0;
+		const completedCampaignIds = new Set<string>();
 
-		for (let i = 0; i < tasks.length; i += MAX_PARALLEL) {
-			const batch = tasks.slice(i, i + MAX_PARALLEL);
-			processPromises.push(this.processBatch(batch));
+		for (const task of tasks) {
+			const minuteCount = await Tasks.getCurrentMinuteCount();
+			if (minuteCount >= MAX_PER_MINUTE) {
+				signale.info(`Minute limit reached after ${processed} emails`);
+				return res.status(200).json({
+					success: true,
+					processed: processed,
+					timestamp: new Date().toISOString(),
+				});
+			}
+
+			let canSend = false;
+			let retries = 0;
+			const MAX_RETRIES = 3;
+
+			while (!canSend && retries < MAX_RETRIES) {
+				const minuteCount = await Tasks.getCurrentMinuteCount();
+				if (minuteCount >= MAX_PER_MINUTE) {
+					signale.info(`Minute limit reached after ${processed} emails`);
+					return res.status(200).json({
+						success: true,
+						processed: processed,
+						timestamp: new Date().toISOString(),
+					});
+				}
+
+				const secondCount = await Tasks.getCurrentSecondCount();
+				if (secondCount >= MAX_EMAILS_PER_SECOND) {
+					signale.info(`Per-second limit reached, waiting for 1 second...`);
+					await new Promise((resolve) => setTimeout(resolve, 1000));
+					continue;
+				}
+
+				canSend = await Tasks.canSendEmail();
+				if (canSend) {
+					break;
+				}
+
+				retries++;
+				if (retries < MAX_RETRIES) {
+					const baseDelay = 50 + Math.random() * 100;
+					const delay = baseDelay * Math.pow(2, retries - 1);
+					signale.info(`Rate limit hit, retrying in ${Math.round(delay)}ms (attempt ${retries}/${MAX_RETRIES})...`);
+					await new Promise((resolve) => setTimeout(resolve, delay));
+				}
+			}
+
+			if (!canSend) {
+				signale.warn(`Failed to reserve slot for task ${task.id} after ${MAX_RETRIES} retries, skipping`);
+				continue;
+			}
+
+			try {
+				const wasCompleted = await this.processSingleTask(task);
+				if (wasCompleted && task.campaignId) {
+					completedCampaignIds.add(task.campaignId);
+				}
+				processed++;
+			} catch (error) {
+				signale.error(`Failed to process task ${task.id}:`, error);
+			}
 		}
 
-		await Promise.allSettled(processPromises);
+		await this.checkAndMarkCampaignsFinished(completedCampaignIds);
 
-		signale.info(`Processed ${tasks.length} tasks`);
-
+		signale.info(`Processed ${processed} tasks`);
 		return res.status(200).json({
 			success: true,
-			processed: tasks.length,
+			processed: processed,
 			timestamp: new Date().toISOString(),
 		});
 	}
 
-	private async processBatch(tasks: TaskWithRelations[]): Promise<void> {
-		const emailPromises = tasks.map(async (task) => {
-			try {
-				await prisma.task.update({
-					where: { id: task.id },
-					data: {
-						status: TaskStatus.PROCESSING,
-					},
-				});
-				await this.processTask(task);
-				await prisma.task.update({
-					where: { id: task.id },
-					data: {
-						status: TaskStatus.COMPLETED,
-					},
-				});
-				signale.success(`Email sent to ${task.contact.email}`);
-			} catch (error) {
-				signale.error(`Failed to process task ${task.id}:`, error);
-				// TODO: Implement retry/backoff if necessary
-				await prisma.task.update({
-					where: { id: task.id },
-					data: {
-						status: TaskStatus.FAILED,
-					},
-				});
-			}
-		});
+	private async processSingleTask(task: TaskWithRelations): Promise<boolean> {
+		try {
+			await prisma.task.update({
+				where: { id: task.id },
+				data: { status: TaskStatus.PROCESSING },
+			});
 
-		await Promise.allSettled(emailPromises);
+			await this.processTask(task);
+
+			await prisma.task.update({
+				where: { id: task.id },
+				data: { status: TaskStatus.COMPLETED },
+			});
+			signale.success(`Email sent to ${task.contact.email}`);
+			return true;
+		} catch (error) {
+			signale.error(`Failed to process task ${task.id}:`, error);
+			// TODO: Implement retry/backoff if necessary
+			await prisma.task.update({
+				where: { id: task.id },
+				data: {
+					status: TaskStatus.FAILED,
+				},
+			});
+			return false;
+		}
+	}
+
+	private async checkAndMarkCampaignsFinished(campaignIds: Set<string>): Promise<void> {
+		for (const campaignId of campaignIds) {
+			const campaign = await prisma.campaign.findUnique({
+				where: { id: campaignId },
+				select: { status: true },
+			});
+
+			if (!campaign || campaign.status === CampaignStatus.DELIVERED) {
+				continue;
+			}
+
+			const pendingTasks = await prisma.task.count({
+				where: {
+					campaignId,
+					status: {
+						in: [TaskStatus.PENDING, TaskStatus.PROCESSING],
+					},
+				},
+			});
+
+			if (pendingTasks === 0) {
+				await prisma.campaign.update({
+					where: { id: campaignId },
+					data: {
+						status: CampaignStatus.DELIVERED,
+						delivered: new Date(),
+					},
+				});
+				signale.info(`Campaign ${campaignId} marked as DELIVERED - all tasks completed`);
+			}
+		}
 	}
 
 	private async processTask(task: TaskWithRelations): Promise<void> {
@@ -206,16 +269,6 @@ export class Tasks {
 				},
 			});
 			return;
-		}
-
-		const canSend = await Tasks.tryRecordEmailSent();
-		if (!canSend) {
-			const dailyCount = await Tasks.getDailyCount();
-			const recentCount = await Tasks.getRecentCount();
-			signale.warn(
-				`Rate limit reached. Daily: ${dailyCount}/${MAX_EMAILS_PER_DAY}, Per second: ${recentCount}/${MAX_EMAILS_PER_SECOND}`,
-			);
-			throw new Error("Rate limit exceeded");
 		}
 
 		let subject = "";

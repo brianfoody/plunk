@@ -174,7 +174,7 @@ export class ProjectService {
 				take: Math.ceil(limit / 2),
 				skip: Math.floor(skip / 2),
 			}),
-			
+
 			prisma.email.findMany({
 				where: { contact: { projectId: id } },
 				include: {
@@ -186,7 +186,7 @@ export class ProjectService {
 			}),
 
 			prisma.trigger.count({ where: { contact: { projectId: id } } }),
-			prisma.email.count({ where: { contact: { projectId: id } } })
+			prisma.email.count({ where: { contact: { projectId: id } } }),
 		]);
 
 		const combined = [...triggers, ...emails];
@@ -197,7 +197,7 @@ export class ProjectService {
 			total: totalTriggers + totalEmails,
 			page,
 			limit,
-			totalPages: Math.ceil((totalTriggers + totalEmails) / limit)
+			totalPages: Math.ceil((totalTriggers + totalEmails) / limit),
 		};
 	}
 
@@ -285,19 +285,20 @@ export class ProjectService {
 		return wrapRedis(Keys.Project.campaigns(id), async () => {
 			return prisma.project.findUnique({ where: { id } }).campaigns({
 				include: {
-					recipients: { select: { id: true } },
+					_count: {
+						select: {
+							campaignRecipients: true,
+							tasks: true,
+						},
+					},
 					emails: { select: { id: true, status: true } },
-					tasks: { select: { id: true } },
 				},
 				orderBy: { createdAt: "desc" },
 			});
 		});
 	}
 
-	public static analytics(params: {
-		id: string;
-		method?: "week" | "month" | "year";
-	}) {
+	public static analytics(params: { id: string; method?: "week" | "month" | "year" }) {
 		return wrapRedis(Keys.Project.analytics(params.id), async () => {
 			const methods = {
 				week: {

@@ -1,12 +1,11 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { ContactSchemas } from "@plunk/shared";
 import type { Template } from "@prisma/client";
-import { Ring } from "@uiball/loaders";
 import dayjs from "dayjs";
 import { AnimatePresence, motion } from "framer-motion";
 import { Edit2, Plus } from "lucide-react";
 import Link from "next/link";
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, Fragment } from "react";
 import { type FieldError, useFieldArray, useForm } from "react-hook-form";
 import { toast } from "sonner";
 import { z } from "zod";
@@ -271,7 +270,7 @@ export default function Index() {
 							fields.map((field, index) => {
 								// @ts-ignore
 								return (
-									<>
+									<Fragment key={field.id}>
 										<div>
 											<div className="grid w-full grid-cols-9 items-end gap-3">
 												<div className={"col-span-4"}>
@@ -337,7 +336,7 @@ export default function Index() {
 												</button>
 											</div>
 										</div>
-									</>
+									</Fragment>
 								);
 							})
 						) : (
