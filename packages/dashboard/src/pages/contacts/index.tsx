@@ -8,6 +8,7 @@ import Link from "next/link";
 import React, { useState, useEffect, Fragment } from "react";
 import { type FieldError, useFieldArray, useForm } from "react-hook-form";
 import { toast } from "sonner";
+import { formatRelativeTime } from "../../lib/formatRelativeTime";
 import { z } from "zod";
 import { Card, Empty, FullscreenLoader, Modal, Skeleton, Table, Toggle, Dropdown } from "../../components";
 import { Dashboard } from "../../layouts";
@@ -156,15 +157,13 @@ export default function Index() {
 						.map((u) => {
 							return {
 								Email: u.email,
-								"Last Activity": dayjs()
-									.to(
-										u.triggers.length > 0
-											? u.triggers.sort((a, b) => {
-													return a.createdAt > b.createdAt ? -1 : 1;
-											  })[0].createdAt
-											: u.createdAt,
-									)
-									.toString(),
+								"Last Activity": formatRelativeTime(
+									u.triggers.length > 0
+										? u.triggers.sort((a, b) => {
+												return a.createdAt > b.createdAt ? -1 : 1;
+										  })[0].createdAt
+										: u.createdAt,
+								),
 								Subscribed: u.subscribed,
 								Edit: (
 									<Link href={`/contacts/${u.id}`} className={"transition hover:text-neutral-800"}>

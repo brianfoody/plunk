@@ -7,6 +7,7 @@ import { Plus, TerminalSquare, Trash } from "lucide-react";
 import Link from "next/link";
 import React, { useState } from "react";
 import { useForm } from "react-hook-form";
+import { formatRelativeTime } from "../../lib/formatRelativeTime";
 import { Area, AreaChart, ResponsiveContainer, YAxis } from "recharts";
 import { toast } from "sonner";
 import { Alert, Badge, Card, Empty, FullscreenLoader, Input, Modal, Skeleton, Table } from "../../components";
@@ -159,7 +160,11 @@ export default function Index() {
 											"Triggered by users": (
 												<Badge type={"info"}>{`${
 													e.triggers.length > 0
-														? Math.round(([...new Map(e.triggers.map((t) => [t.contactId, t])).values()].length / contacts) * 100)
+														? Math.round(
+																([...new Map(e.triggers.map((t) => [t.contactId, t])).values()].length /
+																	contacts) *
+																	100,
+														  )
 														: 0
 												}%`}</Badge>
 											),
@@ -171,20 +176,17 @@ export default function Index() {
 															width={100}
 															height={40}
 															data={Object.entries(
-																e.triggers.reduce(
-																	(acc, cur) => {
-																		const date = dayjs(cur.createdAt).format("MM/YYYY");
+																e.triggers.reduce((acc, cur) => {
+																	const date = dayjs(cur.createdAt).format("MM/YYYY");
 
-																		if (acc[date]) {
-																			acc[date] += 1;
-																		} else {
-																			acc[date] = 1;
-																		}
+																	if (acc[date]) {
+																		acc[date] += 1;
+																	} else {
+																		acc[date] = 1;
+																	}
 
-																		return acc;
-																	},
-																	{} as Record<string, number>,
-																),
+																	return acc;
+																}, {} as Record<string, number>),
 															)
 																.sort((a, b) => {
 																	// day is the month with year e.g 01/2021
@@ -214,20 +216,24 @@ export default function Index() {
 
 															<YAxis axisLine={false} fill={"#fff"} tickSize={0} width={5} interval={0} />
 
-															<Area type="monotone" dataKey="count" stroke="#2563eb" fill="url(#gradientFill)" strokeWidth={2} />
+															<Area
+																type="monotone"
+																dataKey="count"
+																stroke="#2563eb"
+																fill="url(#gradientFill)"
+																strokeWidth={2}
+															/>
 														</AreaChart>
 													</ResponsiveContainer>
 												</>
 											),
-											"Last Activity": dayjs()
-												.to(
-													e.triggers.length > 0
-														? e.triggers.sort((a, b) => {
-																return b.createdAt > a.createdAt ? 1 : -1;
-															})[0].createdAt
-														: e.createdAt,
-												)
-												.toString(),
+											"Last Activity": formatRelativeTime(
+												e.triggers.length > 0
+													? e.triggers.sort((a, b) => {
+															return b.createdAt > a.createdAt ? 1 : -1;
+													  })[0].createdAt
+													: e.createdAt,
+											),
 											Trigger: (
 												<button
 													onClick={() => {
@@ -247,7 +253,9 @@ export default function Index() {
 															},
 														);
 													}}
-													className={"flex items-center text-center text-sm font-medium transition hover:text-neutral-800"}
+													className={
+														"flex items-center text-center text-sm font-medium transition hover:text-neutral-800"
+													}
 												>
 													<TerminalSquare size={18} />
 												</button>
@@ -256,7 +264,9 @@ export default function Index() {
 											Remove: !e.templateId ? (
 												<button
 													onClick={() => remove(e.id)}
-													className={"flex items-center text-center text-sm font-medium transition hover:text-neutral-800"}
+													className={
+														"flex items-center text-center text-sm font-medium transition hover:text-neutral-800"
+													}
 												>
 													<Trash size={18} />
 												</button>
@@ -292,20 +302,22 @@ export default function Index() {
 											"Triggered by users": (
 												<Badge type={"info"}>{`${
 													e.triggers.length > 0
-														? Math.round(([...new Map(e.triggers.map((t) => [t.contactId, t])).values()].length / contacts) * 100)
+														? Math.round(
+																([...new Map(e.triggers.map((t) => [t.contactId, t])).values()].length /
+																	contacts) *
+																	100,
+														  )
 														: 0
 												}%`}</Badge>
 											),
 											"Total times triggered": e.triggers.length,
-											"Last Activity": dayjs()
-												.to(
-													e.triggers.length > 0
-														? e.triggers.sort((a, b) => {
-																return b.createdAt > a.createdAt ? 1 : -1;
-															})[0].createdAt
-														: e.createdAt,
-												)
-												.toString(),
+											"Last Activity": formatRelativeTime(
+												e.triggers.length > 0
+													? e.triggers.sort((a, b) => {
+															return b.createdAt > a.createdAt ? 1 : -1;
+													  })[0].createdAt
+													: e.createdAt,
+											),
 										};
 									})}
 							/>

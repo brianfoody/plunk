@@ -2,6 +2,7 @@ import { Controller, Delete, Get, Middleware, Post, Put } from "@overnightjs/cor
 import { IdentitySchemas, ProjectSchemas, UtilitySchemas } from "@plunk/shared";
 import type { Request, Response } from "express";
 import z from "zod";
+import dayjs from "dayjs";
 import { prisma } from "../database/prisma";
 import { NotAllowed, NotAuthenticated, NotFound } from "../exceptions";
 import { type IJwt, isAuthenticated } from "../middleware/auth";
@@ -451,9 +452,9 @@ export class Projects {
 		return res.status(200).json(count);
 	}
 
-	@Get("id/:id/emails/last24h")
+	@Get("id/:id/emails/stats")
 	@Middleware([isAuthenticated])
-	public async getProjectEmailsLast24hByID(req: Request, res: Response) {
+	public async getProjectEmailsStatsByID(req: Request, res: Response) {
 		const { id: projectId } = UtilitySchemas.id.parse(req.params);
 
 		const { userId } = res.locals.auth as IJwt;
@@ -470,23 +471,57 @@ export class Projects {
 			throw new NotAllowed();
 		}
 
-		const twentyFourHoursAgo = new Date();
-		twentyFourHoursAgo.setHours(twentyFourHoursAgo.getHours() - 24);
+		const now = new Date();
+		const last30Days = dayjs(now).subtract(30, "days").toDate();
+		const last7Days = dayjs(now).subtract(7, "days").toDate();
+		const last24Hours = dayjs(now).subtract(24, "hours").toDate();
+		const lastHour = dayjs(now).subtract(1, "hour").toDate();
 
-		const count = await prisma.email.count({
-			where: {
-				OR: [
-					{ action: { projectId } },
-					{ campaign: { projectId } },
-					{ projectId },
-				],
-				createdAt: {
-					gte: twentyFourHoursAgo,
+		const emailWhere = {
+			OR: [{ action: { projectId } }, { campaign: { projectId } }, { projectId }],
+		};
+
+		const [last30DaysCount, last7DaysCount, last24HoursCount, lastHourCount] = await Promise.all([
+			prisma.email.count({
+				where: {
+					...emailWhere,
+					createdAt: {
+						gte: last30Days,
+					},
 				},
-			},
-		});
+			}),
+			prisma.email.count({
+				where: {
+					...emailWhere,
+					createdAt: {
+						gte: last7Days,
+					},
+				},
+			}),
+			prisma.email.count({
+				where: {
+					...emailWhere,
+					createdAt: {
+						gte: last24Hours,
+					},
+				},
+			}),
+			prisma.email.count({
+				where: {
+					...emailWhere,
+					createdAt: {
+						gte: lastHour,
+					},
+				},
+			}),
+		]);
 
-		return res.status(200).json({ count });
+		return res.status(200).json({
+			last30Days: last30DaysCount,
+			last7Days: last7DaysCount,
+			last24Hours: last24HoursCount,
+			lastHour: lastHourCount,
+		});
 	}
 
 	@Get("id/:id/emails")

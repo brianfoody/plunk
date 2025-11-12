@@ -8,6 +8,7 @@ import { Eye, Search, XIcon } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/router";
 import React, { useEffect, useState } from "react";
+import { formatRelativeTime } from "../../lib/formatRelativeTime";
 import { type FieldError, useForm } from "react-hook-form";
 import { toast } from "sonner";
 import { Alert, Card, Dropdown, Editor, FullscreenLoader, Input, MultiselectDropdown, Table } from "../../components";
@@ -628,7 +629,7 @@ export default function Index() {
 									<Alert type={"info"} title={"Automatic batching"}>
 										Your campaign will be sent at a rate of {sendingRate?.emailsPerMinute || 20} emails per minute. It
 										will be delivered to all contacts{" "}
-										{dayjs().to(
+										{formatRelativeTime(
 											dayjs().add(
 												Math.ceil(
 													(isSelectingAll ? contactsCount || 0 : selectedContactIds.length) /

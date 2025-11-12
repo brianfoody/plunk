@@ -5,6 +5,7 @@ import Link from "next/link";
 import React from "react";
 import { Alert, Badge, Card, Empty, Skeleton } from "../../components";
 import { Dashboard } from "../../layouts";
+import { formatRelativeTime } from "../../lib/formatRelativeTime";
 import { useTemplates } from "../../lib/hooks/templates";
 
 /**
@@ -91,7 +92,7 @@ export default function Index() {
 																	<h3 className="truncate text-sm font-medium text-neutral-800">{t.subject}</h3>
 																	{t.actions.length > 0 && <Badge type={"success"}>Active</Badge>}
 																</div>
-																<p className="mt-1 truncate text-sm text-neutral-500">Last edited {dayjs().to(t.updatedAt)}</p>
+																<p className="mt-1 truncate text-sm text-neutral-500">Last edited {formatRelativeTime(t.updatedAt)}</p>
 															</div>
 														</div>
 														<div>

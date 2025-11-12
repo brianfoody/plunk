@@ -5,6 +5,7 @@ import Link from "next/link";
 import React from "react";
 import { Alert, Badge, Card, Empty, FullscreenLoader, Skeleton } from "../../components";
 import { Dashboard } from "../../layouts";
+import { formatRelativeTime } from "../../lib/formatRelativeTime";
 import { useActions } from "../../lib/hooks/actions";
 import { useActiveProject } from "../../lib/hooks/projects";
 
@@ -104,15 +105,13 @@ export default function Index() {
 																			<label className={"text-xs font-medium text-neutral-500"}>Last activity</label>
 																			<p className="mt-1 truncate text-sm text-neutral-500">
 																				{a.triggers.length > 0 ? "Last triggered" : "Created"}{" "}
-																				{dayjs()
-																					.to(
-																						a.triggers.length > 0
-																							? a.triggers.sort((a, b) => {
-																									return a.createdAt > b.createdAt ? -1 : 1;
-																								})[0].createdAt
-																							: a.createdAt,
-																					)
-																					.toString()}
+																				{formatRelativeTime(
+																					a.triggers.length > 0
+																						? a.triggers.sort((a, b) => {
+																								return a.createdAt > b.createdAt ? -1 : 1;
+																							})[0].createdAt
+																						: a.createdAt,
+																				)}
 																			</p>
 																		</div>
 																		<div>

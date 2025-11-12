@@ -8,6 +8,7 @@ import { Eye, Save, Search, Users2, XIcon } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/router";
 import React, { useEffect, useState } from "react";
+import { formatRelativeTime } from "../../lib/formatRelativeTime";
 import { type FieldError, useForm } from "react-hook-form";
 import { toast } from "sonner";
 import { Alert, Badge, Card, Dropdown, Editor, FullscreenLoader, Input, Modal, MultiselectDropdown, Table } from "../../components";
@@ -895,7 +896,7 @@ export default function Index() {
 																: ""}
 															{campaignStats.pendingTasks > 0 ? `${campaignStats.pendingTasks} pending` : ""}.{" "}
 															Estimated completion:{" "}
-															{dayjs().to(
+															{formatRelativeTime(
 																dayjs().add(
 																	Math.ceil(
 																		(campaignStats.pendingTasks + campaignStats.processingTasks) /
@@ -909,7 +910,7 @@ export default function Index() {
 														<>
 															{" "}
 															It will be delivered to all contacts{" "}
-															{dayjs().to(
+															{formatRelativeTime(
 																dayjs().add(
 																	Math.ceil(
 																		(isSelectingAll
@@ -925,7 +926,7 @@ export default function Index() {
 											) : (
 												<>
 													Your campaign will be sent out in batches. It will be delivered to all contacts{" "}
-													{dayjs().to(
+													{formatRelativeTime(
 														dayjs().add(
 															Math.ceil(
 																(isSelectingAll
