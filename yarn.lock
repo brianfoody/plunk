@@ -1963,6 +1963,13 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@faker-js/faker@npm:^10.1.0":
+  version: 10.1.0
+  resolution: "@faker-js/faker@npm:10.1.0"
+  checksum: 10c0/3dc277245ec1bef8b839a9dc45b4ccb1688d21b8bde6531a849c1773193de30047e40e085b7e900c42c940911ecf1645b582ad3c85093df5bfdbddeb44a2b554
+  languageName: node
+  linkType: hard
+
 "@hookform/resolvers@npm:^3.9.0":
   version: 3.9.1
   resolution: "@hookform/resolvers@npm:3.9.1"
@@ -10743,10 +10750,12 @@ __metadata:
   resolution: "plunk@workspace:."
   dependencies:
     "@biomejs/biome": "npm:^1.8.3"
+    "@faker-js/faker": "npm:^10.1.0"
     "@prisma/client": "npm:^5.17.0"
     lerna: "npm:^8.1.6"
     prisma: "npm:^5.17.0"
     rimraf: "npm:^5.0.9"
+    ts-node: "npm:^10.9.2"
   languageName: unknown
   linkType: soft
 
@@ -12679,7 +12688,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"ts-node@npm:^10.4.0":
+"ts-node@npm:^10.4.0, ts-node@npm:^10.9.2":
   version: 10.9.2
   resolution: "ts-node@npm:10.9.2"
   dependencies:
