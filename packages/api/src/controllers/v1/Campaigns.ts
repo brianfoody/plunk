@@ -6,6 +6,7 @@ import z from "zod";
 import { prisma } from "../../database/prisma";
 import { HttpException, NotAllowed, NotFound } from "../../exceptions";
 import { type IJwt, type ISecret, isAuthenticated, isValidSecretKey } from "../../middleware/auth";
+import { DEFAULT_PAGINATION_LIMIT } from "../../app/constants";
 import { CampaignService } from "../../services/CampaignService";
 import { ContactService } from "../../services/ContactService";
 import { EmailService } from "../../services/EmailService";
@@ -44,7 +45,7 @@ export class Campaigns {
 		const { id: campaignId } = UtilitySchemas.id.parse(req.params);
 		const {
 			page,
-			limit = 20,
+			limit,
 			search,
 		} = z
 			.object({
@@ -57,7 +58,7 @@ export class Campaigns {
 					.string()
 					.transform((val) => parseInt(val, 10))
 					.pipe(z.number().min(1).max(200))
-					.default("50"),
+					.default(String(DEFAULT_PAGINATION_LIMIT)),
 				search: z.string().optional(),
 			})
 			.parse(req.query);

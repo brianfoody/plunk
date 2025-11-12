@@ -17,6 +17,39 @@ type TaskWithRelations = Task & {
 
 @Controller("tasks")
 export class Tasks {
+	private static readonly RATE_LIMIT_SCRIPT = `
+		local recentKey = KEYS[1]
+		local dailyKey = KEYS[2]
+		local now = tonumber(ARGV[1])
+		local maxPerSecond = tonumber(ARGV[2])
+		local maxPerDay = tonumber(ARGV[3])
+		local secondsUntilMidnight = tonumber(ARGV[4])
+		
+		local dailyCount = tonumber(redis.call('GET', dailyKey) or '0')
+		local oneSecondAgo = now - 1000
+		local recentCount = redis.call('ZCOUNT', recentKey, oneSecondAgo, now)
+		
+		if dailyCount >= maxPerDay then
+			return 0
+		end
+		
+		if recentCount >= maxPerSecond then
+			return 0
+		end
+		
+		redis.call('ZADD', recentKey, now, tostring(now))
+		redis.call('EXPIRE', recentKey, 2)
+		
+		local newDailyCount = redis.call('INCR', dailyKey)
+		if newDailyCount == 1 then
+			redis.call('EXPIRE', dailyKey, secondsUntilMidnight)
+		end
+		
+		redis.call('ZREMRANGEBYSCORE', recentKey, 0, oneSecondAgo)
+		
+		return 1
+	`;
+
 	private static getDailyKey(): string {
 		const today = new Date().toISOString().split("T")[0];
 		return `email:rate:daily:${today}`;
@@ -27,52 +60,55 @@ export class Tasks {
 	}
 
 	private static async getDailyCount(): Promise<number> {
-		const key = Tasks.getDailyKey();
-		const count = await redis.get(key);
-		return count ? parseInt(count, 10) : 0;
+		try {
+			const key = Tasks.getDailyKey();
+			const count = await redis.get(key);
+			return count ? parseInt(count, 10) : 0;
+		} catch (error) {
+			signale.error("Failed to get daily count from Redis:", error);
+			return 0;
+		}
 	}
 
 	private static async getRecentCount(): Promise<number> {
-		const key = Tasks.getRecentKey();
-		const oneSecondAgo = Date.now() - 1000;
-		const count = await redis.zcount(key, oneSecondAgo, Date.now());
-		return count;
+		try {
+			const key = Tasks.getRecentKey();
+			const oneSecondAgo = Date.now() - 1000;
+			const count = await redis.zcount(key, oneSecondAgo, Date.now());
+			return count;
+		} catch (error) {
+			signale.error("Failed to get recent count from Redis:", error);
+			return 0;
+		}
 	}
 
-	private static async canSendEmail(): Promise<boolean> {
-		const dailyCount = await Tasks.getDailyCount();
-		const recentCount = await Tasks.getRecentCount();
+	private static async tryRecordEmailSent(): Promise<boolean> {
+		try {
+			const now = Date.now();
+			const recentKey = Tasks.getRecentKey();
+			const dailyKey = Tasks.getDailyKey();
 
-		if (dailyCount >= MAX_EMAILS_PER_DAY) {
-			return false;
-		}
-
-		if (recentCount >= MAX_EMAILS_PER_SECOND) {
-			return false;
-		}
-
-		return true;
-	}
-
-	private static async recordEmailSent(): Promise<void> {
-		const now = Date.now();
-		const recentKey = Tasks.getRecentKey();
-		const dailyKey = Tasks.getDailyKey();
-
-		await redis.zadd(recentKey, now, now.toString());
-		await redis.expire(recentKey, 2);
-
-		const dailyCount = await redis.incr(dailyKey);
-		if (dailyCount === 1) {
 			const tomorrow = new Date();
 			tomorrow.setDate(tomorrow.getDate() + 1);
 			tomorrow.setHours(0, 0, 0, 0);
 			const secondsUntilMidnight = Math.floor((tomorrow.getTime() - Date.now()) / 1000);
-			await redis.expire(dailyKey, secondsUntilMidnight);
-		}
 
-		const oneSecondAgo = now - 1000;
-		await redis.zremrangebyscore(recentKey, 0, oneSecondAgo);
+			const result = await redis.eval(
+				Tasks.RATE_LIMIT_SCRIPT,
+				2,
+				recentKey,
+				dailyKey,
+				now.toString(),
+				MAX_EMAILS_PER_SECOND.toString(),
+				MAX_EMAILS_PER_DAY.toString(),
+				secondsUntilMidnight.toString(),
+			);
+
+			return result === 1;
+		} catch (error) {
+			signale.error("Failed to record email sent in Redis:", error);
+			return false;
+		}
 	}
 
 	@Post()
@@ -80,29 +116,10 @@ export class Tasks {
 		const BATCH_SIZE = parseInt(process.env.EMAIL_BATCH_SIZE || "20");
 		const MAX_PARALLEL = parseInt(process.env.MAX_PARALLEL_EMAILS || "5");
 
-		const canSend = await Tasks.canSendEmail();
-		if (!canSend) {
-			const dailyCount = await Tasks.getDailyCount();
-			const recentCount = await Tasks.getRecentCount();
-			signale.warn(
-				`Rate limit reached. Daily: ${dailyCount}/${MAX_EMAILS_PER_DAY}, Per second: ${recentCount}/${MAX_EMAILS_PER_SECOND}`,
-			);
-			return res.status(200).json({ success: true, processed: 0, rateLimited: true });
-		}
-
-		const dailyCount = await Tasks.getDailyCount();
-		const recentCount = await Tasks.getRecentCount();
-
-		const availableSlots = Math.min(BATCH_SIZE, MAX_EMAILS_PER_SECOND - recentCount, MAX_EMAILS_PER_DAY - dailyCount);
-
-		if (availableSlots <= 0) {
-			return res.status(200).json({ success: true, processed: 0, rateLimited: true });
-		}
-
 		const tasks = await prisma.task.findMany({
 			where: { runBy: { lte: new Date() }, status: TaskStatus.PENDING },
 			orderBy: { runBy: "asc" },
-			take: availableSlots,
+			take: BATCH_SIZE,
 			include: {
 				action: { include: { template: true, notevents: true } },
 				campaign: true,
@@ -170,6 +187,17 @@ export class Tasks {
 		const project = await ProjectService.id(contact.projectId);
 
 		if (!project) {
+			await prisma.task.updateMany({
+				where: {
+					contact: {
+						projectId: contact.projectId,
+					},
+					status: TaskStatus.PENDING,
+				},
+				data: {
+					status: TaskStatus.FAILED,
+				},
+			});
 			await prisma.task.deleteMany({
 				where: {
 					contact: {
@@ -178,6 +206,16 @@ export class Tasks {
 				},
 			});
 			return;
+		}
+
+		const canSend = await Tasks.tryRecordEmailSent();
+		if (!canSend) {
+			const dailyCount = await Tasks.getDailyCount();
+			const recentCount = await Tasks.getRecentCount();
+			signale.warn(
+				`Rate limit reached. Daily: ${dailyCount}/${MAX_EMAILS_PER_DAY}, Per second: ${recentCount}/${MAX_EMAILS_PER_SECOND}`,
+			);
+			throw new Error("Rate limit exceeded");
 		}
 
 		let subject = "";
@@ -245,8 +283,6 @@ export class Tasks {
 				}),
 			},
 		});
-
-		await Tasks.recordEmailSent();
 
 		const emailData: {
 			messageId: string;

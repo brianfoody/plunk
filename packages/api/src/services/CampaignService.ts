@@ -2,6 +2,7 @@ import { Keys } from "./keys";
 import { wrapRedis } from "./redis";
 import { prisma } from "../database/prisma";
 import { TaskStatus } from "@prisma/client";
+import { DEFAULT_PAGINATION_LIMIT } from "../app/constants";
 
 export class CampaignService {
 	public static id(id: string) {
@@ -16,7 +17,7 @@ export class CampaignService {
 		});
 	}
 
-	public static async getPaginatedEmails(campaignId: string, page: number = 1, limit: number = 20, search?: string) {
+	public static async getPaginatedEmails(campaignId: string, page: number = 1, limit: number = DEFAULT_PAGINATION_LIMIT, search?: string) {
 		const where: any = {
 			campaignId,
 			...(search && {
