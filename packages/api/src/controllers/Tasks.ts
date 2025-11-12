@@ -92,123 +92,93 @@ export class Tasks {
 	public async handleTasks(req: Request, res: Response) {
 		const MAX_PER_MINUTE = Tasks.EMAILS_PER_MINUTE;
 
-		console.log(`Processing up to ${MAX_PER_MINUTE} tasks per minute`);
+		const tasks = await prisma.task.findMany({
+			where: { status: TaskStatus.PENDING },
+			orderBy: { createdAt: "asc" },
+			include: {
+				action: { include: { template: true, notevents: true } },
+				campaign: true,
+				contact: true,
+			},
+			take: MAX_EMAILS_PER_MINUTE,
+		});
 
-		let totalProcessed = 0;
+		if (tasks.length === 0) {
+			return res.status(200).json({ success: true, processed: 0 });
+		}
+
+		let processed = 0;
 		const completedCampaignIds = new Set<string>();
-		let skip = 0;
-		const fetchBatchSize = 100;
 
-		while (true) {
-			const currentMinuteCount = await Tasks.getCurrentMinuteCount();
-			const remainingCapacity = MAX_PER_MINUTE - currentMinuteCount;
-
-			if (remainingCapacity <= 0) {
-				signale.info(`Minute limit reached, processed ${totalProcessed} tasks total`);
-				break;
+		for (const task of tasks) {
+			const minuteCount = await Tasks.getCurrentMinuteCount();
+			if (minuteCount >= MAX_PER_MINUTE) {
+				signale.info(`Minute limit reached after ${processed} emails`);
+				return res.status(200).json({
+					success: true,
+					processed: processed,
+					timestamp: new Date().toISOString(),
+				});
 			}
 
-			const tasksToFetch = Math.min(fetchBatchSize, remainingCapacity);
-			console.log(`Fetching up to ${tasksToFetch} tasks (remaining capacity: ${remainingCapacity})`);
+			let canSend = false;
+			let retries = 0;
+			const MAX_RETRIES = 3;
 
-			const tasks = await prisma.task.findMany({
-				where: { status: TaskStatus.PENDING },
-				orderBy: { createdAt: "asc" },
-				include: {
-					action: { include: { template: true, notevents: true } },
-					campaign: true,
-					contact: true,
-				},
-				take: tasksToFetch,
-				skip: skip,
-			});
-
-			if (tasks.length === 0) {
-				console.log(`No more pending tasks available`);
-				break;
-			}
-
-			console.log(`Fetched ${tasks.length} tasks, processing...`);
-
-			for (const task of tasks) {
+			while (!canSend && retries < MAX_RETRIES) {
 				const minuteCount = await Tasks.getCurrentMinuteCount();
 				if (minuteCount >= MAX_PER_MINUTE) {
-					signale.info(`Minute limit reached after processing ${totalProcessed} tasks`);
-					await this.checkAndMarkCampaignsFinished(completedCampaignIds);
+					signale.info(`Minute limit reached after ${processed} emails`);
 					return res.status(200).json({
 						success: true,
-						processed: totalProcessed,
+						processed: processed,
 						timestamp: new Date().toISOString(),
 					});
 				}
 
-				let canSend = false;
-				let retries = 0;
-				const MAX_RETRIES = 3;
-
-				while (!canSend && retries < MAX_RETRIES) {
-					const minuteCount = await Tasks.getCurrentMinuteCount();
-					if (minuteCount >= MAX_PER_MINUTE) {
-						signale.info(`Minute limit reached after processing ${totalProcessed} tasks`);
-						await this.checkAndMarkCampaignsFinished(completedCampaignIds);
-						return res.status(200).json({
-							success: true,
-							processed: totalProcessed,
-							timestamp: new Date().toISOString(),
-						});
-					}
-
-					const secondCount = await Tasks.getCurrentSecondCount();
-					if (secondCount >= MAX_EMAILS_PER_SECOND) {
-						signale.info(`Per-second limit reached, waiting for 1 second...`);
-						await new Promise((resolve) => setTimeout(resolve, 1000));
-						continue;
-					}
-
-					canSend = await Tasks.canSendEmail();
-					if (canSend) {
-						break;
-					}
-
-					retries++;
-					if (retries < MAX_RETRIES) {
-						const baseDelay = 50 + Math.random() * 100;
-						const delay = baseDelay * Math.pow(2, retries - 1);
-						signale.info(`Rate limit hit, retrying in ${Math.round(delay)}ms (attempt ${retries}/${MAX_RETRIES})...`);
-						await new Promise((resolve) => setTimeout(resolve, delay));
-					}
-				}
-
-				if (!canSend) {
-					signale.warn(`Failed to reserve slot for task ${task.id} after ${MAX_RETRIES} retries, skipping`);
+				const secondCount = await Tasks.getCurrentSecondCount();
+				if (secondCount >= MAX_EMAILS_PER_SECOND) {
+					signale.info(`Per-second limit reached, waiting for 1 second...`);
+					await new Promise((resolve) => setTimeout(resolve, 1000));
 					continue;
 				}
 
-				try {
-					const wasCompleted = await this.processSingleTask(task);
-					if (wasCompleted && task.campaignId) {
-						completedCampaignIds.add(task.campaignId);
-					}
-					totalProcessed++;
-				} catch (error) {
-					signale.error(`Failed to process task ${task.id}:`, error);
+				canSend = await Tasks.canSendEmail();
+				if (canSend) {
+					break;
+				}
+
+				retries++;
+				if (retries < MAX_RETRIES) {
+					const baseDelay = 50 + Math.random() * 100;
+					const delay = baseDelay * Math.pow(2, retries - 1);
+					signale.info(`Rate limit hit, retrying in ${Math.round(delay)}ms (attempt ${retries}/${MAX_RETRIES})...`);
+					await new Promise((resolve) => setTimeout(resolve, delay));
 				}
 			}
 
-			skip += tasks.length;
+			if (!canSend) {
+				signale.warn(`Failed to reserve slot for task ${task.id} after ${MAX_RETRIES} retries, skipping`);
+				continue;
+			}
 
-			if (tasks.length < tasksToFetch) {
-				console.log(`Fetched fewer tasks than requested, no more available`);
-				break;
+			try {
+				const wasCompleted = await this.processSingleTask(task);
+				if (wasCompleted && task.campaignId) {
+					completedCampaignIds.add(task.campaignId);
+				}
+				processed++;
+			} catch (error) {
+				signale.error(`Failed to process task ${task.id}:`, error);
 			}
 		}
 
 		await this.checkAndMarkCampaignsFinished(completedCampaignIds);
 
-		signale.info(`Processed ${totalProcessed} tasks total`);
+		signale.info(`Processed ${processed} tasks`);
 		return res.status(200).json({
 			success: true,
-			processed: totalProcessed,
+			processed: processed,
 			timestamp: new Date().toISOString(),
 		});
 	}
