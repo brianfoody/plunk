@@ -276,7 +276,7 @@ export class Projects {
 				limit: z
 					.string()
 					.transform((val) => parseInt(val, 10))
-					.pipe(z.number().min(1).max(100))
+					.pipe(z.number().min(1).max(200))
 					.default("50"),
 				search: z.string().optional(),
 				subscribed: z
@@ -379,7 +379,7 @@ export class Projects {
 				limit: z
 					.string()
 					.transform((val) => parseInt(val, 10))
-					.pipe(z.number().min(1).max(100))
+					.pipe(z.number().min(1).max(200))
 					.default("20"),
 			})
 			.parse(req.query);

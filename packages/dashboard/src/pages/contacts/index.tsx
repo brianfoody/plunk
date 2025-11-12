@@ -12,6 +12,7 @@ import { toast } from "sonner";
 import { z } from "zod";
 import { Card, Empty, FullscreenLoader, Modal, Skeleton, Table, Toggle, Dropdown } from "../../components";
 import { Dashboard } from "../../layouts";
+import { ITEMS_PER_PAGE } from "../../lib/constants";
 import { usePaginatedContacts, useContactsCount } from "../../lib/hooks/contacts";
 import { useActiveProject } from "../../lib/hooks/projects";
 import { useUser } from "../../lib/hooks/users";
@@ -36,10 +37,10 @@ export default function Index() {
 	const [page, setPage] = useState(1);
 	const [search, setSearch] = useState("");
 	const [statusFilter, setStatusFilter] = useState<string>("all");
-	
+
 	// Debounce search input
 	const debouncedSearch = useDebounce(search, 300);
-	
+
 	// Reset page when search changes
 	useEffect(() => {
 		setPage(1);
@@ -48,12 +49,12 @@ export default function Index() {
 	const project = useActiveProject();
 	const { data: user } = useUser();
 	const { data: contactsCount } = useContactsCount();
-	const { data: paginatedContacts, isLoading, error, mutate } = usePaginatedContacts(
-		page,
-		20, // 20 contacts per page
-		debouncedSearch,
-		statusFilter === "all" ? undefined : statusFilter === "subscribed"
-	);
+	const {
+		data: paginatedContacts,
+		isLoading,
+		error,
+		mutate,
+	} = usePaginatedContacts(page, ITEMS_PER_PAGE, debouncedSearch, statusFilter === "all" ? undefined : statusFilter === "subscribed");
 
 	const [contactModal, setContactModal] = useState(false);
 
@@ -135,7 +136,7 @@ export default function Index() {
 		if (isLoading || !paginatedContacts) {
 			return <Skeleton type={"table"} />;
 		}
-		
+
 		if (error) {
 			return (
 				<div className="border rounded-md p-4 text-center text-red-500">
@@ -143,86 +144,52 @@ export default function Index() {
 				</div>
 			);
 		}
-		
 
 		if (paginatedContacts.contacts.length > 0) {
 			return (
-				<>
-					<Table
-						values={paginatedContacts.contacts
-							.sort((a, b) => {
-								const aTrigger = a.triggers.length > 0 ? a.triggers.sort()[0].createdAt : a.createdAt;
-								const bTrigger = b.triggers.length > 0 ? b.triggers.sort()[0].createdAt : b.createdAt;
-								return bTrigger > aTrigger ? 1 : -1;
-							})
-							.map((u) => {
-								return {
-									Email: u.email,
-									"Last Activity": dayjs()
-										.to(
-											u.triggers.length > 0
-												? u.triggers.sort((a, b) => {
-														return a.createdAt > b.createdAt ? -1 : 1;
-													})[0].createdAt
-												: u.createdAt,
-										)
-										.toString(),
-									Subscribed: u.subscribed,
-									Edit: (
-										<Link href={`/contacts/${u.id}`} className={"transition hover:text-neutral-800"}>
-											<Edit2 size={18} />
-										</Link>
-									),
-								};
-							})}
-					/>
-					
-					{/* Pagination */}
-					{paginatedContacts.totalPages > 1 && (
-						<nav className="flex items-center justify-between py-3" aria-label="Pagination">
-							<div className="hidden sm:block">
-								<p className="text-sm text-neutral-700">
-									Showing <span className="font-medium">{(page - 1) * 20 + 1}</span> to{" "}
-									<span className="font-medium">
-										{Math.min(page * 20, paginatedContacts.total)}
-									</span>{" "}
-									of <span className="font-medium">{paginatedContacts.total}</span> contacts
-								</p>
-							</div>
-							<div className="flex flex-1 justify-between gap-1 sm:justify-end">
-								<button
-									onClick={() => setPage(prev => Math.max(1, prev - 1))}
-									disabled={page <= 1}
-									className={
-										"flex w-28 items-center justify-center gap-x-0.5 rounded bg-neutral-800 py-2 text-center text-sm font-medium text-white disabled:opacity-50 disabled:cursor-not-allowed"
-									}
-								>
-									Previous
-								</button>
-								<button
-									onClick={() => setPage(prev => Math.min(paginatedContacts.totalPages, prev + 1))}
-									disabled={page >= paginatedContacts.totalPages}
-									className={
-										"flex w-28 items-center justify-center gap-x-0.5 rounded bg-neutral-800 py-2 text-center text-sm font-medium text-white disabled:opacity-50 disabled:cursor-not-allowed"
-									}
-								>
-									Next
-								</button>
-							</div>
-						</nav>
-					)}
-				</>
+				<Table
+					values={paginatedContacts.contacts
+						.sort((a, b) => {
+							const aTrigger = a.triggers.length > 0 ? a.triggers.sort()[0].createdAt : a.createdAt;
+							const bTrigger = b.triggers.length > 0 ? b.triggers.sort()[0].createdAt : b.createdAt;
+							return bTrigger > aTrigger ? 1 : -1;
+						})
+						.map((u) => {
+							return {
+								Email: u.email,
+								"Last Activity": dayjs()
+									.to(
+										u.triggers.length > 0
+											? u.triggers.sort((a, b) => {
+													return a.createdAt > b.createdAt ? -1 : 1;
+											  })[0].createdAt
+											: u.createdAt,
+									)
+									.toString(),
+								Subscribed: u.subscribed,
+								Edit: (
+									<Link href={`/contacts/${u.id}`} className={"transition hover:text-neutral-800"}>
+										<Edit2 size={18} />
+									</Link>
+								),
+							};
+						})}
+					page={page}
+					totalPages={paginatedContacts.totalPages}
+					total={paginatedContacts.total}
+					onPageChange={setPage}
+				/>
 			);
 		}
 
 		return (
-			<Empty 
-				title={"No contacts"} 
+			<Empty
+				title={"No contacts"}
 				description={
-					debouncedSearch 
+					debouncedSearch
 						? `No contacts found matching "${debouncedSearch}"`
 						: "New contacts will automatically be added when they trigger an event"
-				} 
+				}
 			/>
 		);
 	};
@@ -418,10 +385,9 @@ export default function Index() {
 									type="text"
 									placeholder={"Search email or metadata..."}
 									className={`w-[250px] rounded border-neutral-300 px-3 transition ease-in-out focus:border-neutral-800 focus:ring-neutral-800 sm:text-sm pr-10 ${
-										search !== debouncedSearch ? 'border-blue-300 bg-blue-50' : ''
+										search !== debouncedSearch ? "border-blue-300 bg-blue-50" : ""
 									}`}
 								/>
-
 							</div>
 
 							<Dropdown

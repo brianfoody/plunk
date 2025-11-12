@@ -1,11 +1,10 @@
 import React from "react";
 import { Skeleton } from "../Skeleton";
 
-export interface TableProps {
-	values: {
-		// eslint-disable-next-line @typescript-eslint/no-redundant-type-constituents
-		[key: string]: string | number | boolean | Date | React.ReactNode | null;
-	}[];
+type TableRowValue = string | number | boolean | Date | React.ReactNode | null;
+
+export interface TableProps<T extends Record<string, TableRowValue> = Record<string, TableRowValue>> {
+	values: T[];
 	isLoading?: boolean;
 	error?: any;
 	page?: number;
@@ -26,9 +25,172 @@ export interface TableProps {
 	allSelectedCount?: number;
 	pageSelectedCount?: number;
 	// Custom row renderer for selectable tables
-	renderSelectableRow?: (item: any, index: number) => React.ReactNode;
+	renderSelectableRow?: (item: T, index: number) => React.ReactNode;
 	// Row click handler for selectable tables
-	onRowClick?: (item: any, index: number) => void;
+	onRowClick?: (item: T, index: number) => void;
+	// Optional function to get identifier for ARIA labels
+	getItemIdentifier?: (item: T) => string;
+}
+
+interface SearchBarProps {
+	value?: string;
+	onChange: (value: string) => void;
+	placeholder?: string;
+}
+
+function SearchBar({ value, onChange, placeholder = "Search..." }: SearchBarProps) {
+	return (
+		<div className="flex-1 relative">
+			<input
+				type="text"
+				placeholder={placeholder}
+				value={value || ""}
+				onChange={(e) => onChange(e.target.value)}
+				className="w-full px-3 py-2 border border-neutral-300 rounded text-sm transition ease-in-out focus:border-neutral-800 focus:ring-neutral-800"
+				aria-label="Search table"
+			/>
+		</div>
+	);
+}
+
+interface SelectionControlsProps {
+	onSelectAll?: () => void;
+	onSelectPage?: () => void;
+	onClearSelection?: () => void;
+	allSelectedCount?: number;
+	pageSelectedCount?: number;
+}
+
+function SelectionControls({
+	onSelectAll,
+	onSelectPage,
+	onClearSelection,
+	allSelectedCount = 0,
+	pageSelectedCount = 0,
+}: SelectionControlsProps) {
+	return (
+		<div className="flex gap-2">
+			{onSelectAll && (
+				<button
+					type="button"
+					onClick={onSelectAll}
+					className="flex items-center justify-center gap-x-1 rounded border border-neutral-300 bg-white px-4 py-2 text-center text-sm font-medium text-neutral-800 transition ease-in-out hover:bg-neutral-100"
+					aria-label={`Select all ${allSelectedCount} items`}
+				>
+					Select All ({allSelectedCount})
+				</button>
+			)}
+			{onSelectPage && (
+				<button
+					type="button"
+					onClick={onSelectPage}
+					className="flex items-center justify-center gap-x-1 rounded border border-neutral-300 bg-white px-4 py-2 text-center text-sm font-medium text-neutral-800 transition ease-in-out hover:bg-neutral-100"
+					aria-label={`Select ${pageSelectedCount} items on current page`}
+				>
+					Select Page ({pageSelectedCount})
+				</button>
+			)}
+			{onClearSelection && (
+				<button
+					type="button"
+					onClick={onClearSelection}
+					className="flex items-center justify-center gap-x-1 rounded border border-neutral-300 bg-white px-4 py-2 text-center text-sm font-medium text-neutral-800 transition ease-in-out hover:bg-neutral-100"
+					aria-label="Clear all selections"
+				>
+					Clear All
+				</button>
+			)}
+		</div>
+	);
+}
+
+interface PaginationProps {
+	page?: number;
+	totalPages?: number;
+	total?: number;
+	onPageChange?: (page: number) => void;
+	selectable?: boolean;
+	isSelectingAll?: boolean;
+	allSelectedCount?: number;
+	selectedIds?: string[];
+}
+
+function Pagination({
+	page,
+	totalPages,
+	total,
+	onPageChange,
+	selectable = false,
+	isSelectingAll = false,
+	allSelectedCount = 0,
+	selectedIds = [],
+}: PaginationProps) {
+	const hasPagination =
+		totalPages !== undefined && totalPages > 1 && page !== undefined && total !== undefined && onPageChange !== undefined;
+
+	const formatNumber = (num: number) => num.toLocaleString();
+
+	return (
+		<div className="flex justify-between items-center">
+			<span className="text-sm text-gray-600">
+				{hasPagination && (
+					<>
+						Page {page} of {formatNumber(totalPages)} pages
+						<span className="mx-1">·</span>
+						{formatNumber(total)} total items
+					</>
+				)}
+				{selectable && (isSelectingAll ? allSelectedCount > 0 : selectedIds.length > 0) && (
+					<>
+						{hasPagination && " "}(
+						{isSelectingAll ? `${formatNumber(allSelectedCount)} selected` : `${formatNumber(selectedIds.length)} selected`})
+					</>
+				)}
+			</span>
+			{hasPagination && (
+				<nav aria-label="Table pagination">
+					<div className="flex gap-2">
+						<button
+							type="button"
+							onClick={() => onPageChange(1)}
+							disabled={page! <= 1}
+							className="px-3 py-0.5 text-sm border rounded disabled:opacity-50"
+							aria-label="Go to first page"
+						>
+							First
+						</button>
+						<button
+							type="button"
+							onClick={() => onPageChange(Math.max(1, page! - 1))}
+							disabled={page! <= 1}
+							className="px-3 py-0.5 text-sm border rounded disabled:opacity-50"
+							aria-label="Go to previous page"
+						>
+							Previous
+						</button>
+						<button
+							type="button"
+							onClick={() => onPageChange(Math.min(totalPages!, page! + 1))}
+							disabled={page! >= totalPages!}
+							className="px-3 py-0.5 text-sm border rounded disabled:opacity-50"
+							aria-label="Go to next page"
+						>
+							Next
+						</button>
+						<button
+							type="button"
+							onClick={() => onPageChange(totalPages!)}
+							disabled={page! >= totalPages!}
+							className="px-3 py-0.5 text-sm border rounded disabled:opacity-50"
+							aria-label="Go to last page"
+						>
+							Last
+						</button>
+					</div>
+				</nav>
+			)}
+		</div>
+	);
 }
 
 /**
@@ -44,7 +206,7 @@ export interface TableProps {
  * @param root0.onSearchChange
  * @param root0.searchPlaceholder
  */
-export default function Table({
+export default function Table<T extends Record<string, TableRowValue> = Record<string, TableRowValue>>({
 	values,
 	isLoading = false,
 	error,
@@ -69,7 +231,8 @@ export default function Table({
 	renderSelectableRow,
 	// Row click handler for selectable tables
 	onRowClick,
-}: TableProps) {
+	getItemIdentifier,
+}: TableProps<T>) {
 	if (isLoading) {
 		return <Skeleton type="table" />;
 	}
@@ -121,6 +284,7 @@ export default function Table({
 							</thead>
 							<tbody>
 								{values.map((row, index) => {
+									const itemIdentifier = getItemIdentifier ? getItemIdentifier(row) : `item ${index + 1}`;
 									return (
 										<tr
 											key={index}
@@ -137,6 +301,7 @@ export default function Table({
 														<input
 															type="checkbox"
 															className="rounded border-neutral-300 text-neutral-800 focus:ring-neutral-800"
+															aria-label={`Select ${itemIdentifier}`}
 														/>
 													)}
 												</td>
@@ -243,91 +408,35 @@ export default function Table({
 			{/* Search Bar and Selection Buttons */}
 			{(onSearchChange || selectable) && (
 				<div className="flex items-center gap-4">
-					{/* Search input */}
-					{onSearchChange && (
-						<div className="flex-1 relative">
-							<input
-								type="text"
-								placeholder={searchPlaceholder}
-								value={searchValue || ""}
-								onChange={(e) => onSearchChange(e.target.value)}
-								className="w-full px-3 py-2 border border-neutral-300 rounded text-sm transition ease-in-out focus:border-neutral-800 focus:ring-neutral-800"
-							/>
-						</div>
-					)}
-
-					{/* Selection Buttons */}
+					{onSearchChange && <SearchBar value={searchValue} onChange={onSearchChange} placeholder={searchPlaceholder} />}
 					{selectable && (
-						<div className="flex gap-2">
-							{onSelectAll && (
-								<button
-									type="button"
-									onClick={onSelectAll}
-									className="flex items-center justify-center gap-x-1 rounded border border-neutral-300 bg-white px-4 py-2 text-center text-sm font-medium text-neutral-800 transition ease-in-out hover:bg-neutral-100"
-								>
-									Select All ({allSelectedCount})
-								</button>
-							)}
-							{onSelectPage && (
-								<button
-									type="button"
-									onClick={onSelectPage}
-									className="flex items-center justify-center gap-x-1 rounded border border-neutral-300 bg-white px-4 py-2 text-center text-sm font-medium text-neutral-800 transition ease-in-out hover:bg-neutral-100"
-								>
-									Select Page ({pageSelectedCount})
-								</button>
-							)}
-							{onClearSelection && (
-								<button
-									type="button"
-									onClick={onClearSelection}
-									className="flex items-center justify-center gap-x-1 rounded border border-neutral-300 bg-white px-4 py-2 text-center text-sm font-medium text-neutral-800 transition ease-in-out hover:bg-neutral-100"
-								>
-									Clear All
-								</button>
-							)}
-						</div>
+						<SelectionControls
+							onSelectAll={onSelectAll}
+							onSelectPage={onSelectPage}
+							onClearSelection={onClearSelection}
+							allSelectedCount={allSelectedCount}
+							pageSelectedCount={pageSelectedCount}
+						/>
 					)}
 				</div>
+			)}
+
+			{/* Pagination and Selection Info */}
+			{((totalPages && totalPages > 1) || selectable) && (
+				<Pagination
+					page={page}
+					totalPages={totalPages}
+					total={total}
+					onPageChange={onPageChange}
+					selectable={selectable}
+					isSelectingAll={isSelectingAll}
+					allSelectedCount={allSelectedCount}
+					selectedIds={selectedIds}
+				/>
 			)}
 
 			{/* Table */}
 			{renderTableContent()}
-
-			{/* Pagination and Selection Info */}
-			{((totalPages && totalPages > 1) || selectable) && (
-				<div className="flex justify-between items-center">
-					<span className="text-sm text-gray-600">
-						{totalPages && totalPages > 1 && `Page ${page} of ${totalPages} - ${total} total items`}
-						{selectable && (isSelectingAll ? allSelectedCount > 0 : selectedIds.length > 0) && (
-							<>
-								{totalPages && totalPages > 1 && " "}(
-								{isSelectingAll ? `${allSelectedCount} selected` : `${selectedIds.length} selected`})
-							</>
-						)}
-					</span>
-					{totalPages && totalPages > 1 && onPageChange && (
-						<div className="flex gap-2">
-							<button
-								type="button"
-								onClick={() => onPageChange(Math.max(1, page! - 1))}
-								disabled={page! <= 1}
-								className="px-3 py-1 text-sm border rounded disabled:opacity-50"
-							>
-								Previous
-							</button>
-							<button
-								type="button"
-								onClick={() => onPageChange(Math.min(totalPages, page! + 1))}
-								disabled={page! >= totalPages}
-								className="px-3 py-1 text-sm border rounded disabled:opacity-50"
-							>
-								Next
-							</button>
-						</div>
-					)}
-				</div>
-			)}
 		</div>
 	);
 }

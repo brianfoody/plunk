@@ -12,6 +12,7 @@ import { type FieldError, useForm } from "react-hook-form";
 import { toast } from "sonner";
 import { Alert, Badge, Card, Dropdown, Editor, FullscreenLoader, Input, Modal, MultiselectDropdown, Table } from "../../components";
 import { Dashboard } from "../../layouts";
+import { ITEMS_PER_PAGE } from "../../lib/constants";
 import { useCampaign, useCampaigns, usePaginatedCampaignEmails } from "../../lib/hooks/campaigns";
 import { useContacts, usePaginatedContacts, useContactsCount } from "../../lib/hooks/contacts";
 import { useEventsWithoutTriggers } from "../../lib/hooks/events";
@@ -73,7 +74,7 @@ export default function Index() {
 		error,
 	} = usePaginatedContacts(
 		contactPage,
-		10,
+		ITEMS_PER_PAGE,
 		debouncedSearch, // Use debounced search instead of contactSearch
 		true, // Only subscribed contacts
 	);
@@ -82,7 +83,7 @@ export default function Index() {
 		data: paginatedEmails,
 		isLoading: emailsLoading,
 		error: emailsError,
-	} = usePaginatedCampaignEmails(router.query.id as string, emailPage, 20, debouncedEmailSearch);
+	} = usePaginatedCampaignEmails(router.query.id as string, emailPage, ITEMS_PER_PAGE, debouncedEmailSearch);
 
 	const [query, setQuery] = useState<{
 		events?: string[];

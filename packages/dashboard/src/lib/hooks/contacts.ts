@@ -1,5 +1,6 @@
 import useSWR from 'swr';
 import {Action, Contact, Email, Event, Project, Trigger} from '@prisma/client';
+import { ITEMS_PER_PAGE } from '../constants';
 import {useActiveProject} from './projects';
 
 export interface WithProject {
@@ -67,7 +68,7 @@ export function useContacts(page: number) {
  */
 export function usePaginatedContacts(
   page: number = 1,
-  limit: number = 50,
+  limit: number = ITEMS_PER_PAGE,
   search?: string,
   subscribed?: boolean
 ) {

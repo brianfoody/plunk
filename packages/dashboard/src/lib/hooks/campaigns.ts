@@ -1,5 +1,6 @@
 import useSWR from "swr";
 import { Campaign } from "@prisma/client";
+import { ITEMS_PER_PAGE } from "../constants";
 import { useActiveProject } from "./projects";
 
 /**
@@ -17,7 +18,7 @@ export function useCampaign(id: string) {
  * @param limit
  * @param search
  */
-export function usePaginatedCampaignEmails(campaignId: string, page: number = 1, limit: number = 20, search?: string) {
+export function usePaginatedCampaignEmails(campaignId: string, page: number = 1, limit: number = ITEMS_PER_PAGE, search?: string) {
 	const queryParams = new URLSearchParams({
 		page: page.toString(),
 		limit: limit.toString(),

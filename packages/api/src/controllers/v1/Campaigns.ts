@@ -56,7 +56,7 @@ export class Campaigns {
 				limit: z
 					.string()
 					.transform((val) => parseInt(val, 10))
-					.pipe(z.number().min(1).max(100))
+					.pipe(z.number().min(1).max(200))
 					.default("50"),
 				search: z.string().optional(),
 			})
