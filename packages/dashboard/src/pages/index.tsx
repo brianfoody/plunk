@@ -5,6 +5,7 @@ import React, { useState } from "react";
 import { Badge, Card, Empty, FullscreenLoader, Redirect, Skeleton, Table } from "../components";
 import { Dashboard } from "../layouts";
 import { useActiveProject, useActiveProjectFeed, useProjects } from "../lib/hooks/projects";
+import { useEmailsLast24h } from "../lib/hooks/emails";
 
 /**
  *
@@ -15,6 +16,7 @@ export default function Index() {
 	const activeProject = useActiveProject();
 	const { data: projects } = useProjects();
 	const { data: feed } = useActiveProjectFeed(feedPage);
+	const { data: emailsLast24h } = useEmailsLast24h();
 
 	if (projects?.length === 0) {
 		return <Redirect to={"/new"} />;
@@ -159,86 +161,104 @@ export default function Index() {
 						</div>
 					</div>
 
-					<Card title={"Activity feed"}>
-						{feed ? (
-							feed.length === 0 ? (
-								<>
-									<Empty
-										icon={<Frown size={24} />}
-										title={"No feed yet"}
-										description={"Send an email or track an event to see it here"}
-									/>
-								</>
-							) : (
-								<>
-									<Table
-										values={feed.items.map((f) => {
-											if ("messageId" in f) {
-												return {
-													Email: f.contact.email,
-													Activity: (
-														<Badge type={"info"}>
-															{f.createdAt === f.updatedAt
-																? "Email delivered"
-																: `Email ${f.status.toLowerCase()}`}
-														</Badge>
-													),
-													Type: <Badge type={"success"}>Email</Badge>,
-													Time: dayjs().to(dayjs(f.createdAt)),
-													View: (
-														<Link href={`/contacts/${f.contact.id}`}>
-															<Eye size={20} />
-														</Link>
-													),
-												};
-											}
-											if (f.action) {
-												return {
-													Email: f.contact.email,
-													Activity: <Badge type={"info"}>{f.action.name}</Badge>,
-													Type: <Badge type={"info"}>Action</Badge>,
-													Time: dayjs().to(dayjs(f.createdAt)),
-													View: (
-														<Link href={`/contacts/${f.contact.id}`}>
-															<Eye size={20} />
-														</Link>
-													),
-												};
-											}
-											if (f.event) {
-												return {
-													Email: f.contact.email,
-													Activity: <Badge type={"info"}>{f.event.name}</Badge>,
-													Type: <Badge type={"purple"}>Event</Badge>,
-													Time: dayjs().to(dayjs(f.createdAt)),
-													View: (
-														<Link href={`/contacts/${f.contact.id}`}>
-															<Eye size={20} />
-														</Link>
-													),
-												};
-											}
+					<div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+						<div className="lg:col-span-2">
+							<Card title={"Activity feed"}>
+								{feed ? (
+									feed.length === 0 ? (
+										<>
+											<Empty
+												icon={<Frown size={24} />}
+												title={"No feed yet"}
+												description={"Send an email or track an event to see it here"}
+											/>
+										</>
+									) : (
+										<>
+											<Table
+												values={feed.items.map((f) => {
+													if ("messageId" in f) {
+														return {
+															Email: f.contact.email,
+															Activity: (
+																<Badge type={"info"}>
+																	{f.createdAt === f.updatedAt
+																		? "Email delivered"
+																		: `Email ${f.status.toLowerCase()}`}
+																</Badge>
+															),
+															Type: <Badge type={"success"}>Email</Badge>,
+															Time: dayjs().to(dayjs(f.createdAt)),
+															View: (
+																<Link href={`/contacts/${f.contact.id}`}>
+																	<Eye size={20} />
+																</Link>
+															),
+														};
+													}
+													if (f.action) {
+														return {
+															Email: f.contact.email,
+															Activity: <Badge type={"info"}>{f.action.name}</Badge>,
+															Type: <Badge type={"info"}>Action</Badge>,
+															Time: dayjs().to(dayjs(f.createdAt)),
+															View: (
+																<Link href={`/contacts/${f.contact.id}`}>
+																	<Eye size={20} />
+																</Link>
+															),
+														};
+													}
+													if (f.event) {
+														return {
+															Email: f.contact.email,
+															Activity: <Badge type={"info"}>{f.event.name}</Badge>,
+															Type: <Badge type={"purple"}>Event</Badge>,
+															Time: dayjs().to(dayjs(f.createdAt)),
+															View: (
+																<Link href={`/contacts/${f.contact.id}`}>
+																	<Eye size={20} />
+																</Link>
+															),
+														};
+													}
 
-											return {};
-										})}
-									/>
+													return {};
+												})}
+											/>
 
-									<button
-										className={
-											"mx-auto mt-5 block rounded border border-neutral-200 px-5 py-2.5 text-sm font-medium text-neutral-800 transition ease-in-out hover:bg-neutral-50"
-										}
-										onClick={() => {
-											setFeedPage(feedPage + 1);
-										}}
-									>
-										Load older
-									</button>
-								</>
-							)
-						) : (
-							<Skeleton type={"table"} />
-						)}
-					</Card>
+											<button
+												className={
+													"mx-auto mt-5 block rounded border border-neutral-200 px-5 py-2.5 text-sm font-medium text-neutral-800 transition ease-in-out hover:bg-neutral-50"
+												}
+												onClick={() => {
+													setFeedPage(feedPage + 1);
+												}}
+											>
+												Load older
+											</button>
+										</>
+									)
+								) : (
+									<Skeleton type={"table"} />
+								)}
+							</Card>
+						</div>
+						<div className="lg:col-span-1">
+							<Card title={"Last 24 hours"}>
+								<div className="p-6">
+									<div>
+										<label className={"text-xs font-medium text-neutral-500"}>
+											Emails sent
+										</label>
+										<p className="mt-1 text-2xl font-semibold text-neutral-800">
+											{emailsLast24h?.count ?? 0}
+										</p>
+									</div>
+								</div>
+							</Card>
+						</div>
+					</div>
 				</>
 			</Dashboard>
 		</>

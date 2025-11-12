@@ -2,7 +2,7 @@ import { Keys } from "./keys";
 import { wrapRedis } from "./redis";
 import { prisma } from "../database/prisma";
 import { TaskStatus } from "@prisma/client";
-import { DEFAULT_PAGINATION_LIMIT } from "../app/constants";
+import { DEFAULT_PAGINATION_LIMIT, MAX_EMAILS_PER_MINUTE } from "../app/constants";
 
 export class CampaignService {
 	public static id(id: string) {
@@ -150,16 +150,13 @@ export class CampaignService {
 			}),
 		]);
 
-		const EMAIL_BATCH_SIZE = parseInt(process.env.EMAIL_BATCH_SIZE || "20");
-		const emailsPerMinute = EMAIL_BATCH_SIZE;
-
 		return {
 			totalRecipients: campaign._count.campaignRecipients,
 			pendingTasks: pendingCount,
 			processingTasks: processingCount,
 			completedTasks: completedCount,
 			failedTasks: failedCount,
-			emailsPerMinute,
+			emailsPerMinute: MAX_EMAILS_PER_MINUTE,
 		};
 	}
 }

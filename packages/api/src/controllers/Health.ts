@@ -1,5 +1,6 @@
 import { Controller, Get } from "@overnightjs/core";
 import type { Request, Response } from "express";
+import { MAX_EMAILS_PER_MINUTE } from "../app/constants";
 
 @Controller("health")
 export class Health {
@@ -10,7 +11,6 @@ export class Health {
 
 	@Get("config")
 	public async config(req: Request, res: Response) {
-		const EMAIL_BATCH_SIZE = parseInt(process.env.EMAIL_BATCH_SIZE || "20");
-		return res.json({ emailsPerMinute: EMAIL_BATCH_SIZE });
+		return res.json({ emailsPerMinute: MAX_EMAILS_PER_MINUTE });
 	}
 }

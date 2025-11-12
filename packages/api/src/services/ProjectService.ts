@@ -1,5 +1,6 @@
 import dayjs from "dayjs";
 import { prisma } from "../database/prisma";
+import { TaskStatus } from "@prisma/client";
 import { Keys } from "./keys";
 import { wrapRedis } from "./redis";
 
@@ -283,7 +284,7 @@ export class ProjectService {
 
 	public static campaigns(id: string) {
 		return wrapRedis(Keys.Project.campaigns(id), async () => {
-			return prisma.project.findUnique({ where: { id } }).campaigns({
+			const campaigns = await prisma.project.findUnique({ where: { id } }).campaigns({
 				include: {
 					_count: {
 						select: {
@@ -295,6 +296,40 @@ export class ProjectService {
 				},
 				orderBy: { createdAt: "desc" },
 			});
+
+			if (campaigns.length === 0) {
+				return campaigns;
+			}
+
+			const campaignIds = campaigns.map((c) => c.id);
+
+			const [pendingTasks, processingTasks] = await Promise.all([
+				prisma.task.groupBy({
+					by: ["campaignId"],
+					where: {
+						campaignId: { in: campaignIds },
+						status: TaskStatus.PENDING,
+					},
+					_count: true,
+				}),
+				prisma.task.groupBy({
+					by: ["campaignId"],
+					where: {
+						campaignId: { in: campaignIds },
+						status: TaskStatus.PROCESSING,
+					},
+					_count: true,
+				}),
+			]);
+
+			const pendingMap = new Map(pendingTasks.map((t) => [t.campaignId, t._count]));
+			const processingMap = new Map(processingTasks.map((t) => [t.campaignId, t._count]));
+
+			return campaigns.map((campaign) => ({
+				...campaign,
+				pendingTasks: pendingMap.get(campaign.id) ?? 0,
+				processingTasks: processingMap.get(campaign.id) ?? 0,
+			}));
 		});
 	}
 

@@ -79,7 +79,7 @@ export default function Index() {
 																				</p>
 																			</div>
 
-																			{c._count?.tasks > 0 && (
+																			{((c.pendingTasks ?? 0) + (c.processingTasks ?? 0) > 0) && (
 																				<div>
 																					<label
 																						className={"text-xs font-medium text-neutral-500"}
@@ -87,7 +87,7 @@ export default function Index() {
 																						Emails in queue
 																					</label>
 																					<p className="mt-1 truncate text-sm text-neutral-500">
-																						{c._count.tasks}
+																						{(c.pendingTasks ?? 0) + (c.processingTasks ?? 0)}
 																					</p>
 																				</div>
 																			)}
@@ -129,9 +129,9 @@ export default function Index() {
 																				<Badge type={"info"}>Draft</Badge>
 																			) : (
 																				<Badge
-																					type={(c._count?.tasks ?? 0) > 0 ? "info" : "success"}
+																					type={((c.pendingTasks ?? 0) + (c.processingTasks ?? 0)) > 0 ? "info" : "success"}
 																				>
-																					{(c._count?.tasks ?? 0) > 0 ? "Sending" : "Delivered"}
+																					{((c.pendingTasks ?? 0) + (c.processingTasks ?? 0)) > 0 ? "Sending" : "Delivered"}
 																				</Badge>
 																			)}
 																		</p>

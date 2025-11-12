@@ -451,6 +451,44 @@ export class Projects {
 		return res.status(200).json(count);
 	}
 
+	@Get("id/:id/emails/last24h")
+	@Middleware([isAuthenticated])
+	public async getProjectEmailsLast24hByID(req: Request, res: Response) {
+		const { id: projectId } = UtilitySchemas.id.parse(req.params);
+
+		const { userId } = res.locals.auth as IJwt;
+
+		const project = await ProjectService.id(projectId);
+
+		if (!project) {
+			throw new NotFound("project");
+		}
+
+		const isMember = await MembershipService.isMember(projectId, userId);
+
+		if (!isMember) {
+			throw new NotAllowed();
+		}
+
+		const twentyFourHoursAgo = new Date();
+		twentyFourHoursAgo.setHours(twentyFourHoursAgo.getHours() - 24);
+
+		const count = await prisma.email.count({
+			where: {
+				OR: [
+					{ action: { projectId } },
+					{ campaign: { projectId } },
+					{ projectId },
+				],
+				createdAt: {
+					gte: twentyFourHoursAgo,
+				},
+			},
+		});
+
+		return res.status(200).json({ count });
+	}
+
 	@Get("id/:id/emails")
 	@Middleware([isAuthenticated])
 	public async getProjectEmailsByID(req: Request, res: Response) {

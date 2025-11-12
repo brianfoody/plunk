@@ -233,7 +233,8 @@ export default function Index() {
 					void campaignMutate();
 					void campaignsMutate();
 
-					return `Started delivery of your campaign to ${watch("recipients").length} recipients`;
+					const recipientCount = isSelectingAll ? paginatedContacts?.total || 0 : watch("recipients").length;
+					return `Started delivery of your campaign to ${recipientCount} recipients`;
 				},
 				error: () => {
 					return "Could not send your campaign!";
@@ -330,7 +331,7 @@ export default function Index() {
 				type={"info"}
 				title={"Send campaign"}
 				description={`Once you start sending this campaign to ${
-					watch("recipients").length
+					isSelectingAll ? paginatedContacts?.total || 0 : watch("recipients").length
 				} contacts, you can no longer make changes or undo it.`}
 			>
 				<label className="block text-sm font-medium text-neutral-700">Delay</label>
@@ -502,7 +503,7 @@ export default function Index() {
 												onSelectPage={selectCurrentPageContacts}
 												onClearSelection={clearSelectedContacts}
 												isSelectingAll={isSelectingAll}
-												allSelectedCount={contactsCount || 0}
+												allSelectedCount={paginatedContacts?.total || 0}
 												pageSelectedCount={paginatedContacts?.contacts.length || 0}
 												renderSelectableRow={(_, index: number) => {
 													const contactId = paginatedContacts?.contacts[index]?.id;
@@ -868,7 +869,7 @@ export default function Index() {
 						)}
 
 						<AnimatePresence>
-							{((isSelectingAll && contactsCount && contactsCount >= 10) ||
+							{((isSelectingAll && paginatedContacts?.total && paginatedContacts.total >= 10) ||
 								(!isSelectingAll && selectedContactIds.length >= 10)) &&
 								campaign.status !== "DELIVERED" && (
 									<motion.div
@@ -911,8 +912,9 @@ export default function Index() {
 															{dayjs().to(
 																dayjs().add(
 																	Math.ceil(
-																		(isSelectingAll ? contactsCount || 0 : selectedContactIds.length) /
-																			campaignStats.emailsPerMinute,
+																		(isSelectingAll
+																			? paginatedContacts?.total || 0
+																			: selectedContactIds.length) / campaignStats.emailsPerMinute,
 																	),
 																	"minutes",
 																),
@@ -926,7 +928,9 @@ export default function Index() {
 													{dayjs().to(
 														dayjs().add(
 															Math.ceil(
-																(isSelectingAll ? contactsCount || 0 : selectedContactIds.length) / 20,
+																(isSelectingAll
+																	? paginatedContacts?.total || 0
+																	: selectedContactIds.length) / 20,
 															),
 															"minutes",
 														),

@@ -57,6 +57,8 @@ export function useCampaigns() {
 				campaignRecipients: number;
 				tasks: number;
 			};
+			pendingTasks: number;
+			processingTasks: number;
 		})[]
 	>(activeProject ? `/projects/id/${activeProject.id}/campaigns` : null);
 }

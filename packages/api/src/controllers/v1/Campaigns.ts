@@ -178,7 +178,6 @@ export class Campaigns {
 				return {
 					campaignId: campaign.id,
 					contactId,
-					runBy: dayjs().add(delay, "minutes").toDate(),
 				};
 			});
 

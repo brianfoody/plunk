@@ -19,3 +19,12 @@ export function useEmailsCount() {
 
   return useSWR<number>(activeProject ? `/projects/id/${activeProject.id}/emails/count` : null);
 }
+
+/**
+ * Hook for emails sent in last 24 hours
+ */
+export function useEmailsLast24h() {
+  const activeProject = useActiveProject();
+
+  return useSWR<{ count: number }>(activeProject ? `/projects/id/${activeProject.id}/emails/last24h` : null);
+}
