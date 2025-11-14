@@ -39,7 +39,8 @@
 		"generate": "prisma generate",
 		"seed": "ts-node tools/seed.ts",
 		"services:up": "docker compose -f docker-compose.dev.yml up -d",
-		"services:down": "docker compose -f docker-compose.dev.yml down"
+		"services:down": "docker compose -f docker-compose.dev.yml down",
+		"docker:push": "yarn build:shared && yarn build:api && yarn build:dashboard && sh docker-push.sh"
 	},
 	"packageManager": "yarn@4.3.0"
 }

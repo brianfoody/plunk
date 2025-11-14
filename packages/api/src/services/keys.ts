@@ -71,11 +71,16 @@ export const Keys = {
     emails(
       id: string,
       options?: {
+        page?: number;
         count?: boolean;
       },
     ): string {
       if (options?.count) {
         return `project:${id}:emails:count`;
+      }
+
+      if (options?.page) {
+        return `project:${id}:emails:page:${options.page}`;
       }
 
       return `project:${id}:emails`;

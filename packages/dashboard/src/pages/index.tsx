@@ -188,7 +188,7 @@ export default function Index() {
 						<div className="lg:col-span-3">
 							<Card title={"Activity feed"}>
 								{feed ? (
-									feed.length === 0 ? (
+									feed.items.length === 0 ? (
 										<>
 											<Empty
 												icon={<Frown size={24} />}

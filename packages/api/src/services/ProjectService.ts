@@ -60,7 +60,7 @@ export class ProjectService {
 			});
 		},
 		paginated: (id: string, page: number, limit: number = 50) => {
-			return wrapRedis(Keys.Project.emails(id, { page, limit }), async () => {
+			return wrapRedis(Keys.Project.emails(id, { page }), async () => {
 				return prisma.email.findMany({
 					where: {
 						OR: [{ action: { projectId: id } }, { campaign: { projectId: id } }, { projectId: id }],
@@ -297,8 +297,8 @@ export class ProjectService {
 				orderBy: { createdAt: "desc" },
 			});
 
-			if (campaigns.length === 0) {
-				return campaigns;
+			if (!campaigns) {
+				return [];
 			}
 
 			const campaignIds = campaigns.map((c) => c.id);
