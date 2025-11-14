@@ -2,6 +2,7 @@ import { Controller, Delete, Get, Middleware, Post, Put } from "@overnightjs/cor
 import { IdentitySchemas, ProjectSchemas, UtilitySchemas } from "@plunk/shared";
 import type { Request, Response } from "express";
 import z from "zod";
+import dayjs from "dayjs";
 import { prisma } from "../database/prisma";
 import { NotAllowed, NotAuthenticated, NotFound } from "../exceptions";
 import { type IJwt, isAuthenticated } from "../middleware/auth";
@@ -200,7 +201,7 @@ export class Projects {
 				triggers: { select: { createdAt: true } },
 				emails: { select: { createdAt: true } },
 			},
-			orderBy: [{ createdAt: "desc" }],
+			orderBy: [{ email: "asc" }, { createdAt: "desc" }],
 		});
 
 		return res.status(200).json({
@@ -261,12 +262,29 @@ export class Projects {
 	@Middleware([isAuthenticated])
 	public async getProjectContactsPaginated(req: Request, res: Response) {
 		const { id: projectId } = UtilitySchemas.id.parse(req.params);
-		const { page, limit = 50, search, subscribed } = z
+		const {
+			page,
+			limit = 50,
+			search,
+			subscribed,
+		} = z
 			.object({
-				page: z.number().default(1),
-				limit: z.number().max(100).default(50),
+				page: z
+					.string()
+					.transform((val) => parseInt(val, 10))
+					.pipe(z.number().min(1))
+					.default("1"),
+				limit: z
+					.string()
+					.transform((val) => parseInt(val, 10))
+					.pipe(z.number().min(1).max(200))
+					.default("50"),
 				search: z.string().optional(),
-				subscribed: z.boolean().optional(),
+				subscribed: z
+					.string()
+					.transform((val) => val === "true")
+					.pipe(z.boolean())
+					.optional(),
 			})
 			.parse(req.query);
 
@@ -286,10 +304,7 @@ export class Projects {
 			projectId,
 			...(subscribed !== undefined && { subscribed }),
 			...(search && {
-				OR: [
-					{ email: { contains: search, mode: "insensitive" } },
-					{ data: { contains: search, mode: "insensitive" } },
-				],
+				OR: [{ email: { contains: search, mode: "insensitive" } }, { data: { contains: search, mode: "insensitive" } }],
 			}),
 		};
 
@@ -304,7 +319,7 @@ export class Projects {
 					data: true,
 					triggers: { select: { createdAt: true, eventId: true } },
 				},
-				orderBy: { createdAt: "desc" },
+				orderBy: [{ email: "asc" }, { createdAt: "desc" }],
 				take: limit,
 				skip: (page - 1) * limit,
 			}),
@@ -355,10 +370,20 @@ export class Projects {
 	@Middleware([isAuthenticated])
 	public async getProjectFeedByID(req: Request, res: Response) {
 		const { id: projectId } = UtilitySchemas.id.parse(req.params);
-		const { page, limit = 20 } = z.object({
-			page: z.number().default(1),
-			limit: z.number().max(100).default(20),
-		}).parse(req.query);
+		const { page, limit = 20 } = z
+			.object({
+				page: z
+					.string()
+					.transform((val) => parseInt(val, 10))
+					.pipe(z.number().min(1))
+					.default("1"),
+				limit: z
+					.string()
+					.transform((val) => parseInt(val, 10))
+					.pipe(z.number().min(1).max(200))
+					.default("20"),
+			})
+			.parse(req.query);
 
 		const { userId } = res.locals.auth as IJwt;
 
@@ -425,6 +450,78 @@ export class Projects {
 		const count = await ProjectService.emails.count(projectId);
 
 		return res.status(200).json(count);
+	}
+
+	@Get("id/:id/emails/stats")
+	@Middleware([isAuthenticated])
+	public async getProjectEmailsStatsByID(req: Request, res: Response) {
+		const { id: projectId } = UtilitySchemas.id.parse(req.params);
+
+		const { userId } = res.locals.auth as IJwt;
+
+		const project = await ProjectService.id(projectId);
+
+		if (!project) {
+			throw new NotFound("project");
+		}
+
+		const isMember = await MembershipService.isMember(projectId, userId);
+
+		if (!isMember) {
+			throw new NotAllowed();
+		}
+
+		const now = new Date();
+		const last30Days = dayjs(now).subtract(30, "days").toDate();
+		const last7Days = dayjs(now).subtract(7, "days").toDate();
+		const last24Hours = dayjs(now).subtract(24, "hours").toDate();
+		const lastHour = dayjs(now).subtract(1, "hour").toDate();
+
+		const emailWhere = {
+			OR: [{ action: { projectId } }, { campaign: { projectId } }, { projectId }],
+		};
+
+		const [last30DaysCount, last7DaysCount, last24HoursCount, lastHourCount] = await Promise.all([
+			prisma.email.count({
+				where: {
+					...emailWhere,
+					createdAt: {
+						gte: last30Days,
+					},
+				},
+			}),
+			prisma.email.count({
+				where: {
+					...emailWhere,
+					createdAt: {
+						gte: last7Days,
+					},
+				},
+			}),
+			prisma.email.count({
+				where: {
+					...emailWhere,
+					createdAt: {
+						gte: last24Hours,
+					},
+				},
+			}),
+			prisma.email.count({
+				where: {
+					...emailWhere,
+					createdAt: {
+						gte: lastHour,
+					},
+				},
+			}),
+		]);
+
+		return res.status(200).json({
+			last30Days: last30DaysCount,
+			last7Days: last7DaysCount,
+			last24Hours: last24HoursCount,
+			lastHour: lastHourCount,
+		});
 	}
 
 	@Get("id/:id/emails")

@@ -154,7 +154,6 @@ export class ActionService {
 					data: {
 						actionId: action.id,
 						contactId: contact.id,
-						runBy: dayjs().add(action.delay, "minutes").toDate(),
 					},
 				});
 			}

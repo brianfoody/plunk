@@ -1,5 +1,6 @@
 import dayjs from "dayjs";
 import { prisma } from "../database/prisma";
+import { TaskStatus } from "@prisma/client";
 import { Keys } from "./keys";
 import { wrapRedis } from "./redis";
 
@@ -174,7 +175,7 @@ export class ProjectService {
 				take: Math.ceil(limit / 2),
 				skip: Math.floor(skip / 2),
 			}),
-			
+
 			prisma.email.findMany({
 				where: { contact: { projectId: id } },
 				include: {
@@ -186,7 +187,7 @@ export class ProjectService {
 			}),
 
 			prisma.trigger.count({ where: { contact: { projectId: id } } }),
-			prisma.email.count({ where: { contact: { projectId: id } } })
+			prisma.email.count({ where: { contact: { projectId: id } } }),
 		]);
 
 		const combined = [...triggers, ...emails];
@@ -197,7 +198,7 @@ export class ProjectService {
 			total: totalTriggers + totalEmails,
 			page,
 			limit,
-			totalPages: Math.ceil((totalTriggers + totalEmails) / limit)
+			totalPages: Math.ceil((totalTriggers + totalEmails) / limit),
 		};
 	}
 
@@ -283,21 +284,56 @@ export class ProjectService {
 
 	public static campaigns(id: string) {
 		return wrapRedis(Keys.Project.campaigns(id), async () => {
-			return prisma.project.findUnique({ where: { id } }).campaigns({
+			const campaigns = await prisma.project.findUnique({ where: { id } }).campaigns({
 				include: {
-					recipients: { select: { id: true } },
+					_count: {
+						select: {
+							campaignRecipients: true,
+							tasks: true,
+						},
+					},
 					emails: { select: { id: true, status: true } },
-					tasks: { select: { id: true } },
 				},
 				orderBy: { createdAt: "desc" },
 			});
+
+			if (campaigns.length === 0) {
+				return campaigns;
+			}
+
+			const campaignIds = campaigns.map((c) => c.id);
+
+			const [pendingTasks, processingTasks] = await Promise.all([
+				prisma.task.groupBy({
+					by: ["campaignId"],
+					where: {
+						campaignId: { in: campaignIds },
+						status: TaskStatus.PENDING,
+					},
+					_count: true,
+				}),
+				prisma.task.groupBy({
+					by: ["campaignId"],
+					where: {
+						campaignId: { in: campaignIds },
+						status: TaskStatus.PROCESSING,
+					},
+					_count: true,
+				}),
+			]);
+
+			const pendingMap = new Map(pendingTasks.map((t) => [t.campaignId, t._count]));
+			const processingMap = new Map(processingTasks.map((t) => [t.campaignId, t._count]));
+
+			return campaigns.map((campaign) => ({
+				...campaign,
+				pendingTasks: pendingMap.get(campaign.id) ?? 0,
+				processingTasks: processingMap.get(campaign.id) ?? 0,
+			}));
 		});
 	}
 
-	public static analytics(params: {
-		id: string;
-		method?: "week" | "month" | "year";
-	}) {
+	public static analytics(params: { id: string; method?: "week" | "month" | "year" }) {
 		return wrapRedis(Keys.Project.analytics(params.id), async () => {
 			const methods = {
 				week: {

@@ -13,6 +13,7 @@ import { useFieldArray, useForm } from "react-hook-form";
 import { toast } from "sonner";
 import { z } from "zod";
 import { Card, Empty, FullscreenLoader, Input, Modal, Toggle } from "../../components";
+import { formatRelativeTime } from "../../lib/formatRelativeTime";
 import { Dashboard } from "../../layouts";
 import { useContact } from "../../lib/hooks/contacts";
 import { useActiveProject } from "../../lib/hooks/projects";
@@ -439,7 +440,7 @@ export default function Index() {
 																	<p className="text-sm text-neutral-500">Transactional email {email.subject} delivered</p>
 																</div>
 																<div className="whitespace-nowrap text-right text-sm text-neutral-500">
-																	<time dateTime={dayjs(t.createdAt).format("YYYY-MM-DD")}>{dayjs().to(t.createdAt)}</time>
+																	<time dateTime={dayjs(t.createdAt).format("YYYY-MM-DD")}>{formatRelativeTime(t.createdAt)}</time>
 																</div>
 															</div>
 														</div>
@@ -482,7 +483,7 @@ export default function Index() {
 																	<p className="text-sm text-neutral-500">{t.action.name} triggered</p>
 																</div>
 																<div className="whitespace-nowrap text-right text-sm text-neutral-500">
-																	<time dateTime={dayjs(t.createdAt).format("YYYY-MM-DD")}>{dayjs().to(t.createdAt)}</time>
+																	<time dateTime={dayjs(t.createdAt).format("YYYY-MM-DD")}>{formatRelativeTime(t.createdAt)}</time>
 																</div>
 															</div>
 														</div>
@@ -585,7 +586,7 @@ export default function Index() {
 																	</p>
 																</div>
 																<div className="whitespace-nowrap text-right text-sm text-neutral-500">
-																	<time dateTime={dayjs(t.createdAt).format("YYYY-MM-DD")}>{dayjs().to(t.createdAt)}</time>
+																	<time dateTime={dayjs(t.createdAt).format("YYYY-MM-DD")}>{formatRelativeTime(t.createdAt)}</time>
 																</div>
 															</div>
 														</div>
