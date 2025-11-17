@@ -11,4 +11,5 @@ DROP INDEX "tasks_runBy_createdAt_idx";
 ALTER TABLE "tasks" DROP COLUMN "runBy";
 
 -- CreateIndex
+DROP INDEX IF EXISTS "tasks_createdAt_idx";
 CREATE INDEX "tasks_createdAt_idx" ON "tasks"("createdAt");
