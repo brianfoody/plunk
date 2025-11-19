@@ -1,4 +1,4 @@
-import { PrismaClient } from "@prisma/client";
+import { CampaignStatus, PrismaClient, TemplateStyle, TemplateType } from "@prisma/client";
 import { faker } from "@faker-js/faker";
 import bcrypt from "bcrypt";
 import { randomBytes } from "node:crypto";
@@ -9,10 +9,16 @@ const TOTAL_RECORDS = 1_000_000;
 const BATCH_SIZE = 10_000;
 
 const TOTAL_TEMPLATES = 200;
-const TOTAL_ACTIONS = 25_000;
-const ACTION_BATCH_SIZE = 5_000;
-const TOTAL_EVENTS = 25_000;
-const EVENT_BATCH_SIZE = 200;
+const TOTAL_ACTIONS = 250_000;
+const ACTION_BATCH_SIZE = 10_000;
+const TOTAL_EVENTS = 250_000;
+const EVENT_BATCH_SIZE = 10_000;
+
+const TOTAL_CAMPAIGNS = 100;
+const MIN_CAMPAIGN_RECIPIENTS = 100_000;
+const MAX_CAMPAIGN_RECIPIENTS = 999_999;
+const CAMPAIGN_RECIPIENT_BATCH_SIZE = 10_000;
+const CAMPAIGN_STATUSES = Object.values(CampaignStatus) as CampaignStatus[];
 
 async function checkExistingContacts(projectId: string): Promise<number> {
 	const count = await prisma.contact.count({
@@ -44,8 +50,8 @@ function generateFakeContact(projectId: string) {
 	};
 }
 
-const TEMPLATE_TYPES = ["MARKETING", "TRANSACTIONAL"] as const;
-const TEMPLATE_STYLES = ["PLUNK", "HTML"] as const;
+const TEMPLATE_TYPES = ["MARKETING", "TRANSACTIONAL"] as TemplateType[];
+const TEMPLATE_STYLES = ["PLUNK", "HTML"] as TemplateStyle[];
 
 function randomItem<T>(items: T[]): T {
 	return items[Math.floor(Math.random() * items.length)];
@@ -57,8 +63,8 @@ function generateFakeTemplate(projectId: string) {
 		body: faker.lorem.paragraphs(2),
 		email: faker.internet.email(),
 		from: faker.internet.email(),
-		type: randomItem(TEMPLATE_TYPES),
-		style: randomItem(TEMPLATE_STYLES),
+		type: randomItem(TEMPLATE_TYPES) as TemplateType,
+		style: randomItem(TEMPLATE_STYLES) as TemplateStyle,
 		projectId: projectId,
 	};
 }
@@ -255,6 +261,88 @@ async function seedEvents(projectId: string, templates: { id: string }[], action
 	console.log(`✅ Created ${totalCreated.toLocaleString()} events`);
 }
 
+async function fetchProjectContactIds(projectId: string): Promise<string[]> {
+	const contacts = await prisma.contact.findMany({
+		where: { projectId },
+		select: { id: true },
+		orderBy: { createdAt: "asc" },
+	});
+
+	return contacts.map((contact) => contact.id);
+}
+
+function generateFakeCampaign(projectId: string, style: TemplateStyle, status: CampaignStatus) {
+	return {
+		subject: faker.lorem.sentence(6),
+		body: faker.lorem.paragraphs(2),
+		email: faker.internet.email(),
+		from: faker.internet.email(),
+		style,
+		status,
+		delivered: status === CampaignStatus.DELIVERED ? faker.date.past() : null,
+		projectId,
+	};
+}
+
+async function seedCampaigns(projectId: string) {
+	console.log(`Seeding ${TOTAL_CAMPAIGNS.toLocaleString()} campaigns...`);
+
+	const existingCount = await prisma.campaign.count({
+		where: { projectId },
+	});
+
+	if (existingCount > 0) {
+		console.log(`ℹ️  Skipping campaigns: ${existingCount.toLocaleString()} already exist`);
+		return;
+	}
+
+	const contactIds = await fetchProjectContactIds(projectId);
+
+	if (!contactIds.length) {
+		throw new Error("Cannot seed campaigns without contacts.");
+	}
+
+	const totalContacts = contactIds.length;
+	let contactPointer = 0;
+
+	for (let i = 0; i < TOTAL_CAMPAIGNS; i++) {
+		const recipientCount = faker.number.int({ min: MIN_CAMPAIGN_RECIPIENTS, max: MAX_CAMPAIGN_RECIPIENTS });
+		const style = randomItem(TEMPLATE_STYLES);
+		const status = randomItem(CAMPAIGN_STATUSES);
+
+		const campaign = await prisma.campaign.create({
+			data: generateFakeCampaign(projectId, style, status),
+		});
+
+		let remaining = recipientCount;
+
+		while (remaining > 0) {
+			const batchSize = Math.min(CAMPAIGN_RECIPIENT_BATCH_SIZE, remaining);
+			const batchData = [];
+
+			for (let j = 0; j < batchSize; j++) {
+				batchData.push({
+					campaignId: campaign.id,
+					contactId: contactIds[contactPointer],
+				});
+
+				contactPointer = (contactPointer + 1) % totalContacts;
+			}
+
+			await prisma.campaignRecipient.createMany({
+				data: batchData,
+				skipDuplicates: true,
+			});
+
+			remaining -= batchSize;
+		}
+
+		console.log(`Campaign ${i + 1}/${TOTAL_CAMPAIGNS}: ${campaign.id} (${recipientCount.toLocaleString()} recipients)`);
+	}
+
+	console.log(`✅ Created ${TOTAL_CAMPAIGNS.toLocaleString()} campaigns`);
+}
+
 function generateToken(type: "secret" | "public") {
 	return `${type === "secret" ? "sk" : "pk"}_${randomBytes(24).toString("hex")}`;
 }
@@ -385,6 +473,7 @@ async function main() {
 		const actionIds = await seedActions(projectId, templates);
 		await seedEvents(projectId, templates, actionIds);
 		await seedContacts(projectId);
+		await seedCampaigns(projectId);
 	} catch (error) {
 		console.error("Error seeding data:", error instanceof Error ? error.message : error);
 		process.exit(1);
