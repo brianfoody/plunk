@@ -8,6 +8,12 @@ const prisma = new PrismaClient();
 const TOTAL_RECORDS = 1_000_000;
 const BATCH_SIZE = 10_000;
 
+const TOTAL_TEMPLATES = 200;
+const TOTAL_ACTIONS = 25_000;
+const ACTION_BATCH_SIZE = 5_000;
+const TOTAL_EVENTS = 25_000;
+const EVENT_BATCH_SIZE = 200;
+
 async function checkExistingContacts(projectId: string): Promise<number> {
 	const count = await prisma.contact.count({
 		where: {
@@ -35,6 +41,36 @@ function generateFakeContact(projectId: string) {
 				country: faker.location.country(),
 			},
 		}),
+	};
+}
+
+const TEMPLATE_TYPES = ["MARKETING", "TRANSACTIONAL"] as const;
+const TEMPLATE_STYLES = ["PLUNK", "HTML"] as const;
+
+function randomItem<T>(items: T[]): T {
+	return items[Math.floor(Math.random() * items.length)];
+}
+
+function generateFakeTemplate(projectId: string) {
+	return {
+		subject: faker.lorem.sentence(6),
+		body: faker.lorem.paragraphs(2),
+		email: faker.internet.email(),
+		from: faker.internet.email(),
+		type: randomItem(TEMPLATE_TYPES),
+		style: randomItem(TEMPLATE_STYLES),
+		projectId: projectId,
+	};
+}
+
+function generateFakeAction(projectId: string, templateId: string) {
+	return {
+		id: faker.string.uuid(),
+		name: `${faker.hacker.verb()} ${faker.hacker.noun()}`,
+		runOnce: faker.datatype.boolean({ probability: 0.2 }),
+		delay: faker.number.int({ min: 0, max: 86_400 }),
+		projectId: projectId,
+		templateId: templateId,
 	};
 }
 
@@ -77,6 +113,146 @@ async function seedContacts(projectId: string) {
 	}
 
 	console.log(`\n✅ Successfully created ${totalCreated.toLocaleString()} contacts`);
+}
+
+async function seedTemplates(projectId: string): Promise<{ id: string }[]> {
+	console.log(`Seeding ${TOTAL_TEMPLATES.toLocaleString()} templates...`);
+
+	const existingCount = await prisma.template.count({
+		where: { projectId },
+	});
+
+	if (existingCount > 0) {
+		throw new Error(
+			`Cannot seed: ${existingCount.toLocaleString()} templates already exist for this project. Delete existing templates first.`,
+		);
+	}
+
+	const templates: { id: string }[] = [];
+
+	for (let i = 0; i < TOTAL_TEMPLATES; i++) {
+		const template = await prisma.template.create({
+			data: generateFakeTemplate(projectId),
+		});
+		templates.push({ id: template.id });
+		if ((i + 1) % 50 === 0) {
+			console.log(`  Created ${templates.length.toLocaleString()} templates...`);
+		}
+	}
+
+	console.log(`✅ Created ${templates.length.toLocaleString()} templates`);
+	return templates;
+}
+
+async function seedActions(projectId: string, templates: { id: string }[]): Promise<string[]> {
+	if (!templates.length) {
+		throw new Error("Cannot seed actions without templates.");
+	}
+
+	console.log(`Seeding ${TOTAL_ACTIONS.toLocaleString()} actions...`);
+
+	const existingCount = await prisma.action.count({
+		where: { projectId },
+	});
+
+	if (existingCount > 0) {
+		throw new Error(
+			`Cannot seed: ${existingCount.toLocaleString()} actions already exist for this project. Delete existing actions first.`,
+		);
+	}
+
+	const totalBatches = Math.ceil(TOTAL_ACTIONS / ACTION_BATCH_SIZE);
+	let totalCreated = 0;
+	const actionIds: string[] = [];
+
+	for (let batchNum = 1; batchNum <= totalBatches; batchNum++) {
+		const remaining = TOTAL_ACTIONS - totalCreated;
+		const batchSize = Math.min(ACTION_BATCH_SIZE, remaining);
+		const batchData = [];
+
+		for (let i = 0; i < batchSize; i++) {
+			const templateId = randomItem(templates).id;
+			const action = generateFakeAction(projectId, templateId);
+			batchData.push(action);
+			actionIds.push(action.id);
+		}
+
+		await prisma.action.createMany({
+			data: batchData,
+		});
+
+		totalCreated += batchSize;
+		const percentComplete = ((totalCreated / TOTAL_ACTIONS) * 100).toFixed(1);
+		console.log(
+			`Batch ${batchNum}/${totalBatches}: Created ${totalCreated.toLocaleString()}/${TOTAL_ACTIONS.toLocaleString()} actions (${percentComplete}%)`,
+		);
+	}
+
+	console.log(`✅ Created ${totalCreated.toLocaleString()} actions`);
+	return actionIds;
+}
+
+async function seedEvents(projectId: string, templates: { id: string }[], actionIds: string[]) {
+	if (!templates.length) {
+		throw new Error("Cannot seed events without templates.");
+	}
+
+	if (!actionIds.length) {
+		throw new Error("Cannot seed events without actions.");
+	}
+
+	console.log(`Seeding ${TOTAL_EVENTS.toLocaleString()} events...`);
+
+	const existingCount = await prisma.event.count({
+		where: { projectId },
+	});
+
+	if (existingCount > 0) {
+		throw new Error(
+			`Cannot seed: ${existingCount.toLocaleString()} events already exist for this project. Delete existing events first.`,
+		);
+	}
+
+	const totalBatches = Math.ceil(TOTAL_EVENTS / EVENT_BATCH_SIZE);
+	let totalCreated = 0;
+	const maxConnections = Math.max(1, Math.min(3, actionIds.length));
+
+	for (let batchNum = 1; batchNum <= totalBatches; batchNum++) {
+		const remaining = TOTAL_EVENTS - totalCreated;
+		const batchSize = Math.min(EVENT_BATCH_SIZE, remaining);
+		const batchPromises: Promise<unknown>[] = [];
+
+		for (let i = 0; i < batchSize; i++) {
+			const templateId = randomItem(templates).id;
+			const connectCount = faker.number.int({ min: 1, max: maxConnections });
+			const connectActions = faker.helpers.arrayElements(actionIds, connectCount).map((id) => ({ id }));
+
+			const name = `Event ${faker.word.adjective()} ${faker.word.noun()}`;
+
+			batchPromises.push(
+				prisma.event.create({
+					data: {
+						name,
+						projectId,
+						templateId,
+						actions: {
+							connect: connectActions,
+						},
+					},
+				}),
+			);
+		}
+
+		await Promise.all(batchPromises);
+
+		totalCreated += batchSize;
+		const percentComplete = ((totalCreated / TOTAL_EVENTS) * 100).toFixed(1);
+		console.log(
+			`Batch ${batchNum}/${totalBatches}: Created ${totalCreated.toLocaleString()}/${TOTAL_EVENTS.toLocaleString()} events (${percentComplete}%)`,
+		);
+	}
+
+	console.log(`✅ Created ${totalCreated.toLocaleString()} events`);
 }
 
 function generateToken(type: "secret" | "public") {
@@ -205,9 +381,12 @@ async function main() {
 	}
 
 	try {
+		const templates = await seedTemplates(projectId);
+		const actionIds = await seedActions(projectId, templates);
+		await seedEvents(projectId, templates, actionIds);
 		await seedContacts(projectId);
 	} catch (error) {
-		console.error("Error seeding contacts:", error instanceof Error ? error.message : error);
+		console.error("Error seeding data:", error instanceof Error ? error.message : error);
 		process.exit(1);
 	} finally {
 		await prisma.$disconnect();
