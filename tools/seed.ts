@@ -14,11 +14,10 @@ const ACTION_BATCH_SIZE = 10_000;
 const TOTAL_EVENTS = 250_000;
 const EVENT_BATCH_SIZE = 10_000;
 
-const TOTAL_CAMPAIGNS = 100;
+const TOTAL_CAMPAIGNS = 10_000;
 const MIN_CAMPAIGN_RECIPIENTS = 100_000;
-const MAX_CAMPAIGN_RECIPIENTS = 999_999;
-const CAMPAIGN_RECIPIENT_BATCH_SIZE = 10_000;
-const CAMPAIGN_STATUSES = Object.values(CampaignStatus) as CampaignStatus[];
+const MAX_CAMPAIGN_RECIPIENTS = 199_999;
+const CAMPAIGN_RECIPIENT_BATCH_SIZE = 100_000;
 
 async function checkExistingContacts(projectId: string): Promise<number> {
 	const count = await prisma.contact.count({
@@ -86,9 +85,8 @@ async function seedContacts(projectId: string) {
 
 	const existingCount = await checkExistingContacts(projectId);
 	if (existingCount > 0) {
-		throw new Error(
-			`Cannot seed: ${existingCount.toLocaleString()} contacts already exist for this project. Delete existing contacts first.`,
-		);
+		console.log(`ℹ️  Skipping contacts: ${existingCount.toLocaleString()} already exist`);
+		return;
 	}
 
 	const totalBatches = Math.ceil(TOTAL_RECORDS / BATCH_SIZE);
@@ -129,9 +127,8 @@ async function seedTemplates(projectId: string): Promise<{ id: string }[]> {
 	});
 
 	if (existingCount > 0) {
-		throw new Error(
-			`Cannot seed: ${existingCount.toLocaleString()} templates already exist for this project. Delete existing templates first.`,
-		);
+		console.log(`ℹ️  Skipping templates: ${existingCount.toLocaleString()} already exist`);
+		return [];
 	}
 
 	const templates: { id: string }[] = [];
@@ -151,10 +148,6 @@ async function seedTemplates(projectId: string): Promise<{ id: string }[]> {
 }
 
 async function seedActions(projectId: string, templates: { id: string }[]): Promise<string[]> {
-	if (!templates.length) {
-		throw new Error("Cannot seed actions without templates.");
-	}
-
 	console.log(`Seeding ${TOTAL_ACTIONS.toLocaleString()} actions...`);
 
 	const existingCount = await prisma.action.count({
@@ -162,9 +155,13 @@ async function seedActions(projectId: string, templates: { id: string }[]): Prom
 	});
 
 	if (existingCount > 0) {
-		throw new Error(
-			`Cannot seed: ${existingCount.toLocaleString()} actions already exist for this project. Delete existing actions first.`,
-		);
+		console.log(`ℹ️  Skipping actions: ${existingCount.toLocaleString()} already exist`);
+		return [];
+	}
+
+	if (!templates.length) {
+		console.log(`ℹ️  No templates available, skipping actions`);
+		return [];
 	}
 
 	const totalBatches = Math.ceil(TOTAL_ACTIONS / ACTION_BATCH_SIZE);
@@ -199,14 +196,6 @@ async function seedActions(projectId: string, templates: { id: string }[]): Prom
 }
 
 async function seedEvents(projectId: string, templates: { id: string }[], actionIds: string[]) {
-	if (!templates.length) {
-		throw new Error("Cannot seed events without templates.");
-	}
-
-	if (!actionIds.length) {
-		throw new Error("Cannot seed events without actions.");
-	}
-
 	console.log(`Seeding ${TOTAL_EVENTS.toLocaleString()} events...`);
 
 	const existingCount = await prisma.event.count({
@@ -214,9 +203,18 @@ async function seedEvents(projectId: string, templates: { id: string }[], action
 	});
 
 	if (existingCount > 0) {
-		throw new Error(
-			`Cannot seed: ${existingCount.toLocaleString()} events already exist for this project. Delete existing events first.`,
-		);
+		console.log(`ℹ️  Skipping events: ${existingCount.toLocaleString()} already exist`);
+		return;
+	}
+
+	if (!templates.length) {
+		console.log(`ℹ️  No templates available, skipping events`);
+		return;
+	}
+
+	if (!actionIds.length) {
+		console.log(`ℹ️  No actions available, skipping events`);
+		return;
 	}
 
 	const totalBatches = Math.ceil(TOTAL_EVENTS / EVENT_BATCH_SIZE);
@@ -271,15 +269,15 @@ async function fetchProjectContactIds(projectId: string): Promise<string[]> {
 	return contacts.map((contact) => contact.id);
 }
 
-function generateFakeCampaign(projectId: string, style: TemplateStyle, status: CampaignStatus) {
+function generateFakeCampaign(projectId: string, style: TemplateStyle) {
 	return {
 		subject: faker.lorem.sentence(6),
 		body: faker.lorem.paragraphs(2),
 		email: faker.internet.email(),
 		from: faker.internet.email(),
 		style,
-		status,
-		delivered: status === CampaignStatus.DELIVERED ? faker.date.past() : null,
+		status: CampaignStatus.DRAFT,
+		delivered: null,
 		projectId,
 	};
 }
@@ -308,10 +306,9 @@ async function seedCampaigns(projectId: string) {
 	for (let i = 0; i < TOTAL_CAMPAIGNS; i++) {
 		const recipientCount = faker.number.int({ min: MIN_CAMPAIGN_RECIPIENTS, max: MAX_CAMPAIGN_RECIPIENTS });
 		const style = randomItem(TEMPLATE_STYLES);
-		const status = randomItem(CAMPAIGN_STATUSES);
 
 		const campaign = await prisma.campaign.create({
-			data: generateFakeCampaign(projectId, style, status),
+			data: generateFakeCampaign(projectId, style),
 		});
 
 		let remaining = recipientCount;
@@ -333,6 +330,8 @@ async function seedCampaigns(projectId: string) {
 				data: batchData,
 				skipDuplicates: true,
 			});
+
+			console.log(`  ├─ Batch: ${batchData.length.toLocaleString()} recipients created (${remaining - batchSize} remaining)`);
 
 			remaining -= batchSize;
 		}
